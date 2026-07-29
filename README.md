@@ -10,8 +10,8 @@
 |---|---|
 | 实时主控 | WHEELTEC C07A + S27F/S28A 模块化控制器 / MSPM0G3507 |
 | 底盘驱动 | D157B / 双 AT8236 + MG513XP28 12 V 编码电机 |
-| 主循迹 | 亚博 YB-MVX05-V1.0 八路灰度，CD4051 复用数字输出 |
-| 备用循迹 | LF04 四路红外；与八路灰度共用接口，二选一装车 |
+| 主循迹 | HiWonder LineFollower_8CH v1.0 八路红外，I²C 数字量主控 |
+| 备用循迹 | LF04 四路红外；现场若不允许智能/灰度学习模块时换装 |
 | 球杆执行器 | D36A + 42 步进电机 + MS42CG A/B/PWM 编码器 |
 | 视觉与图传 | 01Studio CanMV K230 标准版 + 标配 GC2093 70° |
 | 控制通信 | K230 UART2 单向发送球状态给 MSPM0 |
@@ -23,8 +23,8 @@
 
 ```mermaid
 flowchart LR
-    GRAY["YB-MVX05 八路灰度\n主循迹"] --> MCU["MSPM0G3507 / 模块化控制器\n唯一实时控制主机"]
-    LF["LF04 四路红外\n备用、与灰度二选一"] -.-> MCU
+    LINE8["HiWonder LineFollower_8CH v1.0\n八路红外 / I²C 0x5D"] --> MCU["MSPM0G3507 / 模块化控制器\n唯一实时控制主机"]
+    LF["LF04 四路红外\n规则备用"] -.-> MCU
     IMU["MPU6050\n车体姿态"] --> MCU
     WE["左右轮编码器"] --> MCU
     BE["MS42CG A/B/PWM"] --> MCU
@@ -84,7 +84,7 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 | 硬件 | 状态 | 首版用途 |
 |---|---|---|
 | C07A（MSPM0G3507）+ S27F/S28A 模块化控制器 | 已购 | 唯一实时控制主机；底板版本按实物丝印确认 |
-| P03B 12 V→5 V 稳压模块 | 控制器内含 | 给 C07A、OLED、MPU6050 和循迹传感器供电 |
+| P03B 12 V→5 V 稳压模块 | 控制器内含 | 给 C07A、OLED、MPU6050 和 8 路红外传感器供电 |
 | MPU6050 模块 | 控制器内含 | 保留，PA0/PA1 I²C、PA7 INT |
 | OLED | 控制器内含 | 启动计时、参数和故障显示 |
 | D103A/TB6612 双路驱动模块 | 控制器内含 | 已登记；首版拔下，避免与 D157B/D36A 占脚冲突 |
@@ -92,8 +92,8 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 | D157B 双 AT8236 | 已购 | 左右轮驱动 |
 | 32 cm × 24 cm 三轮底盘 | 已购 | 机械底盘；横向仅余 1 cm 合规空间 |
 | MG513XP28 12 V 编码电机 ×2 | 已购 | 左右轮闭环 |
-| YB-MVX05-V1.0 八路灰度 | 已购 | 主循迹传感器 |
-| LF04 四路红外 | 已购 | 备用循迹；与八路灰度不能同时接 U3 |
+| HiWonder LineFollower_8CH v1.0 八路红外 | 已购 | 主循迹；5 V/85 mA，I²C 固定 7 位地址 0x5D |
+| LF04 四路红外 | 已购 | 规则备用；占 U3 四路 GPIO，主传感器改走 H5 I²C 后不再冲突 |
 | D36A | **型号已确定** | 球杆 STEP/DIR/EN 驱动 |
 | 42 步进 + MS42CG 编码器 | 已购 | 球杆角度闭环 |
 | 25 cm PPR 管、钢球、铰链和传动件 | 已有/已购 | 球杆机械系统 |
@@ -102,6 +102,9 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 | 2.4 GHz AP/热点 | 可选 | 可用现有路由器、手机/电脑热点或 K230 AP |
 
 完整 BOM 状态和限制见 [硬件及接线清单](硬件及接线清单.md)。
+八路红外的型号、尺寸、5 V/85 mA 参数和寄存器表同时核对了
+[HiWonder 官方介绍](https://docs.hiwonder.com/projects/8-ch-Line-Follower/en/latest/docs/1.8-chLine_Follower_Introduction.html)
+与[官方快速上手](https://docs.hiwonder.com/projects/8-ch-Line-Follower/en/latest/docs/2.Quick_Start.html)。
 
 ## 供电
 
@@ -135,10 +138,10 @@ flowchart TD
 | 右电机 BIN1/BIN2 | PA8 / PA9，TIMA0 两通道 | D157B |
 | 左轮编码器 A/B | PA25 / PA26 | GPIO 中断软件正交 |
 | 右轮编码器 A/B | PB20 / PB24 | GPIO 中断软件正交 |
-| 八路灰度 OUT | PB17 输入 | U3 Pin 3，读取当前选中的数字通道 |
-| 八路灰度 AD0/AD1/AD2 | PB16 / PA12 / PA27 输出 | U3 Pin 4/5/6，约 100 µs 后采样 OUT |
-| 八路灰度供电 | S28A/S27F 5 V + U3 GND | U3 Pin 2 是 3.3 V，不能误作模块 5 V |
-| LF04 备用 O1/O2/O3/O4 | PB17 / PB16 / PA12 / PA27 | 使用同一组 U3 GPIO，和八路灰度二选一 |
+| 8 路红外 SDA/SCL | PA0 / PA1，I2C0 | 与 MPU6050 共用 H5 总线；主传感器固定 7 位地址 0x5D |
+| 8 路红外 5V/GND | H5 Pin 1 / Pin 2 | 5 V、约 85 mA；使用分线线束，保留原装 MPU6050 |
+| 8 路红外线束 | SDA→H5 Pin 4，SCL→H5 Pin 3 | 传感器端顺序为 5V/GND/SDA/SCL，按信号接，不按线色猜 |
+| LF04 备用 O1/O2/O3/O4 | PA27 / PA12 / PB16 / PB17 | 厂商线序对应 U3 Pin 6/5/4/3；备用换装时启用 `lf04` 驱动 |
 | OLED SCL/SDA/RST/DC | PA28 / PA31 / PB14 / PB15 | C07A 板载 OLED |
 | 启动键 BLS | PA18 | 消抖；长按急停 |
 | 状态 LED | PB9 | 运行/故障指示 |
@@ -164,6 +167,14 @@ PA0/PA1 用作硬件 QEI，不能照搬；本项目把 A/B 移到 C07A V1.1 新�
 PB18/PB19。PA14、PA13 同时连到 D103A/TB6612 插座，PA22 同时引到
 CCD/J3-CN2，因此首版拔下 D103A，CCD 口保持空置。
 
+HiWonder 八路红外与 MPU6050 地址不冲突，可共用 PA0/PA1。首次接入前先让
+传感器单独上 5 V、与 H5 信号断开，测量 SDA/SCL 空闲电压。PA0/PA1 本身是
+5 V 容忍开漏脚，但同总线的 MPU6050 模块电平未知；若两线高于约 3.6 V，
+不得直接并到 H5，应在传感器侧加双向 I²C 电平转换。总线先以 100 kHz 点亮，
+示波器确认上升沿和无 NACK 后再考虑 400 kHz。PA0/PA1 的电气属性以
+[TI MSPM0G3507 数据手册](https://www.ti.com/document-viewer/mspm0g3507/datasheet)
+为准。
+
 ### K230 到 MSPM0
 
 | CanMV K230 | C07A/MSPM0 | 说明 |
@@ -188,7 +199,7 @@ K230 背面 4P 座按板端丝印核对：
 ## 上电与联调顺序
 
 1. 检查所有电源支路、极性、保险和共地，动力支路先断开。
-2. 点亮模块化控制器、OLED、MPU6050 和八路灰度，确认启动键与 5 ms 节拍。
+2. 点亮模块化控制器、OLED、MPU6050 和八路红外，扫描到 0x5D 并确认启动键与 5 ms 节拍。
 3. 架空验证 D157B 四输入、左右电机方向和编码器符号。
 4. 不接步进动力，用示波器确认 D36A `STEP/DIR/EN` 和复位失能状态。
 5. 接 3.3 V 编码器，验证 PB18/PB19 软件正交和绝对 PWM 后再低速接入步进电机。
@@ -203,7 +214,7 @@ K230 背面 4P 座按板端丝印核对：
 | Python `ball_tracker.py` 语法检查 | PASS |
 | 原通用小车 PC 仿真 6 项 | PASS |
 | H1 球状态帧、CRC 和超时 | PASS |
-| H2 YB-MVX05 八路译码与 LF04 备用 | PASS |
+| H2 HiWonder 8 路 I²C 寄存器、译码与 LF04 备用 | PASS |
 | H3 球位置外环模型 | PASS，最终误差约 0.2 mm |
 | 真车 D157B/D36A/K230 联调 | 待实物 |
 
