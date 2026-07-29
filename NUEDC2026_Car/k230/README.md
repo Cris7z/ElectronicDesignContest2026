@@ -2,7 +2,7 @@
 
 ## Frozen target
 
-- Board: 01Studio **CanMV K230 standard board**, not K230D and not CM-K230.
+- Board: 01Studio **CanMV K230 standard board**, not CM-K230.
 - Memory: start with the 1 GB SKU as an engineering/cost assumption; accept it
   only after the two-hour peak-memory stress test.
 - Camera: the included 70-degree, 24-pin GC2093 on CSI2.
@@ -85,5 +85,4 @@ for covering 25 cm is about 18 cm; verify the real orientation and distortion.
 Prefer the official 24-pin, 15 cm extension cable so the camera can be high
 while the K230 board stays low. Only if the stock lens cannot meet both full
 beam coverage and ball-pixel requirements should an official 100-degree
-manual-focus GC2093 be added on CSI0. Do not plug the existing K230D camera
-into this board until its FPC pin count and pinout are proven compatible.
+manual-focus GC2093 be added on CSI0.

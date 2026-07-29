@@ -1,5 +1,6 @@
 /**
- * Host tests for the H2026 protocol, LF04 processing and ball controller.
+ * Host tests for the H2026 protocol, YB-MVX05/LF04 processing and ball
+ * controller.
  */
 #include <math.h>
 #include <stdint.h>
@@ -8,6 +9,7 @@
 
 #include "../firmware/h2026/ball_balance.h"
 #include "../firmware/h2026/ball_link.h"
+#include "../firmware/h2026/gray8_mux.h"
 #include "../firmware/h2026/lf04.h"
 
 static void put_u16(uint8_t *p, uint16_t value)
@@ -65,7 +67,54 @@ static int test_link(void)
     return ok;
 }
 
-static int test_lf04(void)
+static int test_gray8_mux(void)
+{
+    gray8_mux_t sensor;
+    int address_ok = 1;
+    int completion_ok = 1;
+
+    gray8_mux_init(&sensor, false);
+    gray8_mux_begin_scan(&sensor);
+    for (uint8_t channel = 0u; channel < GRAY8_MUX_CHANNELS; ++channel) {
+        address_ok &= gray8_mux_current_address(&sensor) == channel;
+        const bool complete = gray8_mux_push_out_sample(
+            &sensor, channel == 3u || channel == 4u);
+        completion_ok &= complete == (channel == 7u);
+    }
+
+    const int centre_ok = sensor.line_valid &&
+                          sensor.dark_bits == 0x18u &&
+                          sensor.dark_count == 2u &&
+                          fabsf(sensor.error) < 0.01f;
+
+    gray8_mux_update(&sensor, 0x01u);
+    const int left_ok = sensor.line_valid && sensor.error < -0.99f;
+
+    gray8_mux_update(&sensor, 0xC0u);
+    const int right_ok = sensor.line_valid && sensor.error > 0.85f;
+
+    gray8_mux_update(&sensor, 0x00u);
+    const int lost_ok = !sensor.line_valid && sensor.line_lost &&
+                        !sensor.all_dark && sensor.dark_count == 0u;
+
+    gray8_mux_update(&sensor, 0xFFu);
+    const int all_dark_ok = !sensor.line_valid && !sensor.line_lost &&
+                            sensor.all_dark && sensor.dark_count == 8u;
+
+    gray8_mux_init(&sensor, true);
+    gray8_mux_update(&sensor, 0xFEu);
+    const int active_low_ok = sensor.line_valid &&
+                              sensor.dark_bits == 0x01u &&
+                              sensor.error < -0.99f;
+
+    const int ok = address_ok && completion_ok && centre_ok && left_ok &&
+                   right_ok && lost_ok && all_dark_ok && active_low_ok;
+    printf("[H2] YB-MVX05 mux + weighted/lost/all-dark decode: %s\n",
+           ok ? "PASS" : "FAIL");
+    return ok;
+}
+
+static int test_lf04_fallback(void)
 {
     lf04_t sensor;
     lf04_init(&sensor, false);
@@ -78,7 +127,8 @@ static int test_lf04(void)
     lf04_update(&sensor, 0x0Fu);
     const int cross_ok = !sensor.line_valid && sensor.all_dark;
     const int ok = left_ok && centre_ok && lost_ok && cross_ok;
-    printf("[H2] LF04 four-channel decoding: %s\n", ok ? "PASS" : "FAIL");
+    printf("[H2B] LF04 fallback four-channel decode: %s\n",
+           ok ? "PASS" : "FAIL");
     return ok;
 }
 
@@ -138,7 +188,8 @@ int main(void)
 {
     int pass = 1;
     pass &= test_link();
-    pass &= test_lf04();
+    pass &= test_gray8_mux();
+    pass &= test_lf04_fallback();
     pass &= test_ball_controller();
     printf("======== H2026 %s ========\n", pass ? "ALL PASS" : "FAILED");
     return pass ? 0 : 1;

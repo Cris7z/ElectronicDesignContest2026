@@ -15,6 +15,7 @@ SRC = sim_main.c \
 H2026_SRC = h2026_sim.c \
       ../firmware/h2026/ball_link.c \
       ../firmware/h2026/ball_balance.c \
+      ../firmware/h2026/gray8_mux.c \
       ../firmware/h2026/lf04.c
 
 sim: $(SRC)
