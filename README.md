@@ -11,8 +11,8 @@
 | 项目 | 当前冻结结果 |
 |---|---|
 | 实时主控 | WHEELTEC C07A + S27F/S28A 模块化控制器 / MSPM0G3507 |
-| 底盘驱动 | D157B / 双 AT8236 + MG513XP28 12 V 编码电机 |
-| 主循迹 | HiWonder LineFollower_8CH v1.0 八路红外，I²C 数字量主控 |
+| 底盘驱动 | 板载 D103A/TB6612 + MG513XP28 12 V 编码电机 |
+| 主循迹 | HiWonder LineFollower_8CH v1.0 八路红外，Q2 当前使用 H8 PB6/PB7 原生 UART |
 | 备用循迹 | LF04 四路红外；现场若不允许智能/灰度学习模块时换装 |
 | 球杆执行器 | D36A + 42 步进电机 + MS42CG A/B/PWM 编码器 |
 | 视觉与图传 | 01Studio CanMV K230 标准版 + 标配 GC2093 70° |
@@ -25,7 +25,7 @@
 
 ```mermaid
 flowchart LR
-    LINE8["HiWonder LineFollower_8CH v1.0\n八路红外 / I²C 0x5D"] --> MCU["MSPM0G3507 / 模块化控制器\n唯一实时控制主机"]
+    LINE8["HiWonder LineFollower_8CH v1.0\n八路红外 / UART 115200"] --> MCU["MSPM0G3507 / 模块化控制器\n唯一实时控制主机"]
     LF["LF04 四路红外\n规则备用"] -.-> MCU
     IMU["MPU6050\n车体姿态"] --> MCU
     WE["左右轮编码器"] --> MCU
@@ -36,8 +36,8 @@ flowchart LR
     K230 -->|"H.264 / RTSP"| AP["2.4 GHz AP/热点\n路由器、手机或电脑"]
     AP --> PC["场外笔记本\nVLC/OBS 显示、录像、回放"]
 
-    MCU --> D157["D157B / AT8236"]
-    D157 --> WHEEL["左右 12 V 编码电机"]
+    MCU --> TB["D103A / TB6612"]
+    TB --> WHEEL["左右 12 V 编码电机"]
     MCU --> D36["D36A\nSTEP/DIR/EN"]
     D36 --> BEAM["42 步进 + 25 cm 球杆"]
     MCU --> UI["OLED + 启动键"]
@@ -89,9 +89,9 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 | P03B 12 V→5 V 稳压模块 | 控制器内含 | 给 C07A、OLED、MPU6050 和 8 路红外传感器供电 |
 | MPU6050 模块 | 控制器内含 | 保留，PA0/PA1 I²C、PA7 INT |
 | OLED | 控制器内含 | 启动计时、参数和故障显示 |
-| D103A/TB6612 双路驱动模块 | 控制器内含 | 已登记；首版拔下，避免与 D157B/D36A 占脚冲突 |
+| D103A/TB6612 双路驱动模块 | 控制器内含、当前接入 | 当前左右轮驱动 |
 | 主从一体蓝牙模块 | 控制器内含 | 已登记；K230 占用 PB7 时拔下 |
-| D157B 双 AT8236 | 已购 | 左右轮驱动 |
+| D157B 双 AT8236 | 已购、当前不接入 | 不与板载 TB6612 并用 |
 | 32 cm × 24 cm 三轮底盘 | 已购 | 机械底盘；横向仅余 1 cm 合规空间 |
 | MG513XP28 12 V 编码电机 ×2 | 已购 | 左右轮闭环 |
 | HiWonder LineFollower_8CH v1.0 八路红外 | 已购 | 主循迹；5 V/85 mA，I²C 固定 7 位地址 0x5D |
@@ -114,7 +114,7 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 flowchart TD
     BAT["3S/12 V 动力电池\n容量待峰值电流核算"] --> SW["总开关 + 保险"]
     SW --> STAR["星形电源分配"]
-    STAR --> M12["12 V → D157B → 左右轮"]
+    STAR --> M12["12 V → 板载 TB6612 → 左右轮"]
     STAR --> S12["12 V → D36A → 42 步进"]
     STAR --> P03["P03B：12 V → 5 V"]
     P03 --> C5["模块化控制器 + OLED + MPU6050\n+ 当前循迹传感器"]
@@ -124,7 +124,7 @@ flowchart TD
 
 - 台架首次点亮 K230 使用 Type-C。正式装车前对 P03B 做满载纹波和温升测试；
   通过后可共用，未通过再增加独立 5 V/≥2 A 降压，不预先重复采购。
-- P03B 与 D157B 的 5 V 输出不得并联；默认 P03B 供逻辑，D157B 只驱动电机。
+- P03B 供控制器逻辑与传感器；当前板载 TB6612 使用独立电机动力输入。
 - K230 要求严格 5 V；不得从 UART 4P 座的 3V3 给主板供电。
 - 所有信号必须共地，电机/步进动力回流不得穿过 K230 或 C07A 地线。
 - 电池、保险和线径按轮堵转、步进锁止及 K230 推流峰值核算，并留至少 30%
@@ -136,13 +136,13 @@ flowchart TD
 
 | 功能 | MSPM0 引脚/资源 | 对端与限制 |
 |---|---|---|
-| 左电机 AIN1/AIN2 | PB2 / PB3，TIMG6_CCP0/1 | D157B；禁止照搬旧 TIMA1 配置 |
-| 右电机 BIN1/BIN2 | PA8 / PA9，TIMA0 两通道 | D157B |
+| 左电机 | PB3 / TIMA1_CCP1，PA16 / PA17 | TB6612 B 路 PWMB、BIN1、BIN2 |
+| 右电机 | PB2 / TIMA1_CCP0，PA14 / PA13 | TB6612 A 路 PWMA、AIN1、AIN2 |
 | 左轮编码器 A/B | PA25 / PA26 | GPIO 中断软件正交 |
 | 右轮编码器 A/B | PB20 / PB24 | GPIO 中断软件正交 |
-| 8 路红外 SDA/SCL | PA0 / PA1，I2C0 | 与 MPU6050 共用 H5 总线；主传感器固定 7 位地址 0x5D |
-| 8 路红外 5V/GND | H5 Pin 1 / Pin 2 | 5 V、约 85 mA；使用分线线束，保留原装 MPU6050 |
-| 8 路红外线束 | SDA→H5 Pin 4，SCL→H5 Pin 3 | 传感器端顺序为 5V/GND/SDA/SCL，按信号接，不按线色猜 |
+| MPU6050 SDA/SCL/INT | PA0 / PA1 / PA7，H5 | 保留原装模块；不与八路红外共线 |
+| 8 路红外 UART | PB6 TX / PB7 RX，UART1 | H8 Pin 2/3；交叉接传感器 RX/TX，115200 8N1 |
+| 8 路红外 5V/GND | H8 Pin 5 / Pin 4 | 蓝牙模块必须物理拔下 |
 | LF04 备用 O1/O2/O3/O4 | PA27 / PA12 / PB16 / PB17 | 厂商线序对应 U3 Pin 6/5/4/3；备用换装时启用 `lf04` 驱动 |
 | OLED SCL/SDA/RST/DC | PA28 / PA31 / PB14 / PB15 | C07A 板载 OLED |
 | 启动键 BLS | PA18 | 消抖；长按急停 |
@@ -155,40 +155,35 @@ flowchart TD
 
 | 信号 | MSPM0 端 | 对端 | 注意 |
 |---|---|---|---|
-| STEP | PA24 / TIMA1_CCP1 | D36A ST1 | 硬件脉冲 |
-| DIR | PA13 GPIO | D36A DIR1 | 首次低速确认方向 |
-| EN | PA22 GPIO | D36A EN1 | 外部上/下拉保证 MCU 复位时失能 |
+| STEP / DIR / EN | 当前未分配 | D36A | TB6612 占用 TIMA1、PA13；D36A 当前断开 |
 | Encoder A | PB18 GPIO | MS42CG A | C07A V1.1 引出，双边沿软件正交 |
 | Encoder B | PB19 GPIO | MS42CG B | C07A V1.1 引出，双边沿软件正交 |
-| Encoder PWM | PA14 / TIMG12_CCP0 | MS42CG PWM | 双边沿捕获和断线超时 |
+| Encoder PWM | 当前未分配 | MS42CG PWM | TB6612 占用 PA14；MS42CG 当前断开 |
 | Encoder Z | 暂不接 | MS42CG Z | 首版非必要 |
 | Encoder VCC/GND | 3.3 V / GND | VCC/GND | **严禁 5 V** |
 
-MPU6050 保留原装连接：PA0=SDA、PA1=SCL、PA7=INT。厂商 D36A 示例把
-PA0/PA1 用作硬件 QEI，不能照搬；本项目把 A/B 移到 C07A V1.1 新引出的
-PB18/PB19。PA14、PA13 同时连到 D103A/TB6612 插座，PA22 同时引到
-CCD/J3-CN2，因此首版拔下 D103A，CCD 口保持空置。
+MPU6050 保留原装连接：PA0=SDA、PA1=SCL、PA7=INT。D103A/TB6612 当前
+用于车轮，已占 PB2/PB3、PA13/PA14、PA16/PA17；因此 D36A/MS42CG 在重新
+分配 STEP、DIR 和绝对 PWM 前保持断开，CCD 口保持空置。
 
-HiWonder 八路红外与 MPU6050 地址不冲突，可共用 PA0/PA1。首次接入前先让
-传感器单独上 5 V、与 H5 信号断开，测量 SDA/SCL 空闲电压。PA0/PA1 本身是
-5 V 容忍开漏脚，但同总线的 MPU6050 模块电平未知；若两线高于约 3.6 V，
-不得直接并到 H5，应在传感器侧加双向 I²C 电平转换。总线先以 100 kHz 点亮，
-示波器确认上升沿和无 NACK 后再考虑 400 kHz。PA0/PA1 的电气属性以
-[TI MSPM0G3507 数据手册](https://www.ti.com/document-viewer/mspm0g3507/datasheet)
-为准。
+HiWonder 不与 MPU6050 共用 H5：MPU6050 保持 PA0/PA1/PA7 原插接。当前
+HiWonder 使用原生 UART：H8 `5=5V、4=GND、2=PB6/TX→传感器RX、
+3=PB7/RX←传感器TX`，115200 8N1；U3 的 SDA/SCL 线须断开。模块先收 `0`
+进入手动模式，主控周期性发 `1`，接收一个 S1..S8 状态字节。此前 H8 信号针
+有过异常通断结果，因此必须以持续的 UART 响应与逐路遮挡 bit 变化为准。
 
 ### K230 到 MSPM0
 
 | CanMV K230 | C07A/MSPM0 | 说明 |
 |---|---|---|
-| UART2 TX / GPIO11 | PB7 / UART1_RX | 球状态，115200 8N1 |
+| UART2 TX / GPIO11 | PB7 / UART1_RX | 后续球状态路线；与 Q2 的 U3 红外线路独立 |
 | GND | GND | 必须共地 |
 | UART2 RX / GPIO12 | 首版不接 | 单向传输 |
 | 3V3 | 不接 | 不并联两板电源 |
 
 K230 背面 4P 座按板端丝印核对：
-`GND / 3V3 / IO12-RX2 / IO11-TX2`，不得根据转接线颜色猜信号。PB7 与 C07A
-板载蓝牙共用，接 K230 前必须物理断开蓝牙 TX。
+`GND / 3V3 / IO12-RX2 / IO11-TX2`，不得根据转接线颜色猜信号。Q2 的
+HiWonder 当前占用 H8 的 PB6/PB7；蓝牙模块与 K230 均必须物理断开。
 
 ## 机械冻结
 
@@ -201,8 +196,8 @@ K230 背面 4P 座按板端丝印核对：
 ## 上电与联调顺序
 
 1. 检查所有电源支路、极性、保险和共地，动力支路先断开。
-2. 点亮模块化控制器、OLED、MPU6050 和八路红外，扫描到 0x5D 并确认启动键与 5 ms 节拍。
-3. 架空验证 D157B 四输入、左右电机方向和编码器符号。
+2. 拔蓝牙后按 H8 `5/4=5V/GND` 保留八路红外供电，并按 U3 `4/3=SCL/SDA` 接信号；点亮模块化控制器、OLED、MPU6050 和传感器，读取寄存器 5 并确认启动键与 5 ms 节拍。
+3. 架空验证 TB6612 的两路 PWM/方向、左右电机方向和编码器符号。
 4. 不接步进动力，用示波器确认 D36A `STEP/DIR/EN` 和复位失能状态。
 5. 接 3.3 V 编码器，验证 PB18/PB19 软件正交和绝对 PWM 后再低速接入步进电机。
 6. K230 先跑摄像头、UART2，再跑无屏 H.264/RTSP。
@@ -218,7 +213,7 @@ K230 背面 4P 座按板端丝印核对：
 | H1 球状态帧、CRC 和超时 | PASS |
 | H2 HiWonder 8 路 I²C 寄存器、译码与 LF04 备用 | PASS |
 | H3 球位置外环模型 | PASS，最终误差约 0.2 mm |
-| 真车 D157B/D36A/K230 联调 | 待实物 |
+| 真车 TB6612/D36A/K230 联调 | TB6612 已验证；D36A/K230 待实物 |
 
 当前代码入口：
 

@@ -4,8 +4,13 @@
 > [系统架构、实物引脚分配、供电树和验收门](docs/H2026_ARCHITECTURE.md)。
 > 本页以下内容是出题前的通用小车基线；其中旧 `syscfg`、8 路灰度、
 > JY61P/OpenMV 和 TB6612 引脚假设与现有 S28A/C07A、HiWonder
-> LineFollower_8CH、LF04、D157B、D36A 及拟购的 01Studio CanMV K230
+> LineFollower_8CH、LF04、板载 TB6612、D36A 及拟购的 01Studio CanMV K230
 > 不一致，不能直接烧录上车。
+>
+> **官方第 2 问当前固件：**
+> [`firmware/h2026_q2/README.md`](firmware/h2026_q2/README.md)。
+> 这是按现有八路红外、板载 TB6612 和冻结引脚独立实现的新工程；下面的通用旧框架
+> 仅作历史参考。
 
 为 2026 电赛小车赛道准备的**可魔改整车工程**。控制核心已在 PC 仿真中验证:
 S 弯循迹最大偏差 0.5cm、盲走 1.5m 横向漂移 0.1cm、90° 转角误差 0.08°、
