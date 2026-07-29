@@ -1,0 +1,52 @@
+# Local research downloads and nested upstream repositories
+/tmp/
+/reference/
+/outputs/
+
+# Local source material and machine-specific workspaces
+/CCS_Workspace/
+/参考资料/
+/硬件购买及开源资料/
+/2024H旧代码复盘.md
+/2024H旧代码复盘.pdf
+/2026电赛小车赛道备赛指南.md
+/2026电赛小车赛道交接文档.md
+/2026电赛小车算法方法参考.md
+/2026年省赛器件清单.xlsx
+/2026小车赛道待购清单.xlsx
+/2026H题完整实施方案.md
+/H题_车载平衡滚球运动控制系统.pdf
+/MSPM0G3507_CCS开发环境说明.md
+/打开CCS.cmd
+
+# Generated archives, inspection metadata, and local logs
+/NUEDC2026_Car.zip
+/cad_mcp.log
+/Claude会话记录_2026电赛小车赛道准备.md
+*.inspect.ndjson
+*.log
+
+# Python and native build products
+**/__pycache__/
+*.py[cod]
+*.exe
+*.o
+*.obj
+*.out
+*.elf
+*.map
+
+# IDE-local state and build directories
+**/.codex/
+**/.idea/
+**/.vscode/
+**/Debug/
+**/Release/
+*.VC.db
+*.npa??
+*.rdb
+*.hpa??
+
+# OS metadata
+Thumbs.db
+.DS_Store

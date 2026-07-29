@@ -1,0 +1,201 @@
+/**
+ * car_mspm0g3507.syscfg — NUEDC2026_Car 整车外设配置
+ *
+ * 用法: 在 CCS 里用本文件替换 empty 工程的 empty.syscfg(或改工程引用),
+ * 用 SysConfig GUI 打开一次: 若有引脚被标红(不同 SDK 版本自动布线略有差异),
+ * 按提示点掉冲突即可, 保存生成 ti_msp_dl_config.c/h。
+ * 实例 $name 与 bsp_mspm0.c 期望的宏一一对应, 不要改名。
+ *
+ * 已固定的引脚(有意为之): PWM PA12/PA13, UART0 PA10/PA11(LaunchPad 背板),
+ * I2C1 PB2/PB3。其余引脚交给 SysConfig 自动分配, 生成后在 GUI 的
+ * pin summary 里抄下来接线。
+ */
+//@cliArgs --device "MSPM0G350X" --package "LQFP-64(PM)" --part "Default"
+//@v2CliArgs --device "MSPM0G3507" --package "LQFP-64(PM)"
+// @cliArgs --board /ti/boards/LP_MSPM0G3507 --rtos nortos
+
+/**
+ * Import the modules used in this configuration.
+ */
+const ADC12  = scripting.addModule("/ti/driverlib/ADC12", {}, false);
+const ADC121 = ADC12.addInstance();
+const Board  = scripting.addModule("/ti/driverlib/Board", {}, false);
+const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
+const GPIO1  = GPIO.addInstance();
+const GPIO2  = GPIO.addInstance();
+const GPIO3  = GPIO.addInstance();
+const GPIO4  = GPIO.addInstance();
+const GPIO5  = GPIO.addInstance();
+const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
+const I2C1   = I2C.addInstance();
+const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
+const PWM1   = PWM.addInstance();
+const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
+const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
+const TIMER1 = TIMER.addInstance();
+const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
+const UART1  = UART.addInstance();
+const UART2  = UART.addInstance();
+const UART3  = UART.addInstance();
+const UART4  = UART.addInstance();
+
+/**
+ * SYSCTL — 默认 32MHz SYSOSC(CPUCLK_FREQ=32000000)
+ */
+SYSCTL.forceDefaultClkConfig = true;
+SYSCTL.clockTreeEn           = true;
+
+/**
+ * PWM_MOTOR — TIMG0 两路 20kHz (32MHz / 1 / 1600)
+ * CC0=左电机 PWMA, CC1=右电机 PWMB
+ */
+PWM1.$name                      = "PWM_MOTOR";
+PWM1.clockPrescale              = 1;
+PWM1.timerCount                 = 1600;
+PWM1.timerStartTimer            = true;
+PWM1.peripheral.$assign         = "TIMG0";
+PWM1.peripheral.ccp0Pin.$assign = "PA12";
+PWM1.peripheral.ccp1Pin.$assign = "PA13";
+PWM1.PWM_CHANNEL_0.$name        = "ti_driverlib_pwm_PWMTimerCC0";
+PWM1.PWM_CHANNEL_1.$name        = "ti_driverlib_pwm_PWMTimerCC1";
+
+/**
+ * TIMER_CTRL — TIMG6 5ms 周期中断(速度环)
+ * 32MHz / 8 / 100 = 40kHz -> 5ms = 200 计数
+ */
+TIMER1.$name              = "TIMER_CTRL";
+TIMER1.timerClkDiv        = 8;
+TIMER1.timerClkPrescale   = 100;
+TIMER1.timerMode          = "PERIODIC";
+TIMER1.timerPeriod        = "5 ms";
+TIMER1.interrupts         = ["ZERO"];
+TIMER1.timerStartTimer    = true;
+TIMER1.peripheral.$assign = "TIMG6";
+
+/**
+ * UART x4 — 全部只开 RX 中断, TX 走阻塞发送
+ */
+UART1.$name                    = "UART_DEBUG";
+UART1.targetBaudRate           = 115200;
+UART1.enabledInterrupts        = ["RX"];
+UART1.peripheral.$assign       = "UART0";
+UART1.peripheral.rxPin.$assign = "PA11";
+UART1.peripheral.txPin.$assign = "PA10";
+
+UART2.$name              = "UART_IMU";
+UART2.targetBaudRate     = 9600;
+UART2.enabledInterrupts  = ["RX"];
+UART2.peripheral.$assign = "UART1";
+
+UART3.$name              = "UART_OPENMV";
+UART3.targetBaudRate     = 115200;
+UART3.enabledInterrupts  = ["RX"];
+UART3.peripheral.$assign = "UART2";
+
+UART4.$name              = "UART_RADIO";
+UART4.targetBaudRate     = 115200;
+UART4.enabledInterrupts  = ["RX"];
+UART4.peripheral.$assign = "UART3";
+
+/**
+ * ADC_GRAY — ADC0 软件触发 8 通道序列 MEM0..7, 末通道中断
+ * raw[0]=CH0=最左 .. raw[7]=CH7=最右
+ */
+ADC121.$name                 = "ADC_GRAY";
+ADC121.samplingOperationMode = "sequence";
+ADC121.endAdd                = 7;
+ADC121.adcMem0chansel        = "DL_ADC12_INPUT_CHAN_0";
+ADC121.adcMem1chansel        = "DL_ADC12_INPUT_CHAN_1";
+ADC121.adcMem2chansel        = "DL_ADC12_INPUT_CHAN_2";
+ADC121.adcMem3chansel        = "DL_ADC12_INPUT_CHAN_3";
+ADC121.adcMem4chansel        = "DL_ADC12_INPUT_CHAN_4";
+ADC121.adcMem5chansel        = "DL_ADC12_INPUT_CHAN_5";
+ADC121.adcMem6chansel        = "DL_ADC12_INPUT_CHAN_6";
+ADC121.adcMem7chansel        = "DL_ADC12_INPUT_CHAN_7";
+ADC121.enabledInterrupts     = ["DL_ADC12_INTERRUPT_MEM7_RESULT_LOADED"];
+ADC121.sampleTime0           = "4 us";
+ADC121.powerDownMode         = "DL_ADC12_POWER_DOWN_MODE_MANUAL";
+ADC121.peripheral.$assign    = "ADC0";
+
+/**
+ * I2C_OLED — 400kHz, SSD1306(0x3C)
+ */
+I2C1.$name                     = "I2C_OLED";
+I2C1.basicEnableController     = true;
+I2C1.basicControllerBusSpeed   = 400000;
+I2C1.advAnalogGlitchFilter     = "DISABLED";
+I2C1.peripheral.$assign        = "I2C1";
+I2C1.peripheral.sdaPin.$assign = "PB3";
+I2C1.peripheral.sclPin.$assign = "PB2";
+
+/**
+ * GPIO_ENC_L / GPIO_ENC_R — 编码器 A/B 相, 上升沿中断(GROUP1 共享向量)
+ * 开内部上拉兼容开漏输出的编码器
+ */
+GPIO1.$name = "GPIO_ENC_L";
+GPIO1.port  = "PORTA";
+GPIO1.associatedPins.create(2);
+GPIO1.associatedPins[0].$name            = "LA";
+GPIO1.associatedPins[0].direction        = "INPUT";
+GPIO1.associatedPins[0].internalResistor = "PULL_UP";
+GPIO1.associatedPins[0].interruptEn      = true;
+GPIO1.associatedPins[0].polarity         = "RISE";
+GPIO1.associatedPins[1].$name            = "LB";
+GPIO1.associatedPins[1].direction        = "INPUT";
+GPIO1.associatedPins[1].internalResistor = "PULL_UP";
+GPIO1.associatedPins[1].interruptEn      = true;
+GPIO1.associatedPins[1].polarity         = "RISE";
+
+GPIO2.$name = "GPIO_ENC_R";
+GPIO2.port  = "PORTB";
+GPIO2.associatedPins.create(2);
+GPIO2.associatedPins[0].$name            = "RA";
+GPIO2.associatedPins[0].direction        = "INPUT";
+GPIO2.associatedPins[0].internalResistor = "PULL_UP";
+GPIO2.associatedPins[0].interruptEn      = true;
+GPIO2.associatedPins[0].polarity         = "RISE";
+GPIO2.associatedPins[1].$name            = "RB";
+GPIO2.associatedPins[1].direction        = "INPUT";
+GPIO2.associatedPins[1].internalResistor = "PULL_UP";
+GPIO2.associatedPins[1].interruptEn      = true;
+GPIO2.associatedPins[1].polarity         = "RISE";
+
+/**
+ * GPIO_MOTOR — TB6612 方向脚(同一端口)
+ */
+GPIO3.$name = "GPIO_MOTOR";
+GPIO3.port  = "PORTB";
+GPIO3.associatedPins.create(4);
+GPIO3.associatedPins[0].$name = "AIN1";
+GPIO3.associatedPins[1].$name = "AIN2";
+GPIO3.associatedPins[2].$name = "BIN1";
+GPIO3.associatedPins[3].$name = "BIN2";
+
+/**
+ * GPIO_KEY — 4 个按键, 上拉输入, 低电平按下
+ */
+GPIO4.$name = "GPIO_KEY";
+GPIO4.port  = "PORTA";
+GPIO4.associatedPins.create(4);
+GPIO4.associatedPins[0].$name            = "K1";
+GPIO4.associatedPins[0].direction        = "INPUT";
+GPIO4.associatedPins[0].internalResistor = "PULL_UP";
+GPIO4.associatedPins[1].$name            = "K2";
+GPIO4.associatedPins[1].direction        = "INPUT";
+GPIO4.associatedPins[1].internalResistor = "PULL_UP";
+GPIO4.associatedPins[2].$name            = "K3";
+GPIO4.associatedPins[2].direction        = "INPUT";
+GPIO4.associatedPins[2].internalResistor = "PULL_UP";
+GPIO4.associatedPins[3].$name            = "K4";
+GPIO4.associatedPins[3].direction        = "INPUT";
+GPIO4.associatedPins[3].internalResistor = "PULL_UP";
+
+/**
+ * GPIO_MISC — 蜂鸣器 + 2 个 LED
+ */
+GPIO5.$name = "GPIO_MISC";
+GPIO5.port  = "PORTB";
+GPIO5.associatedPins.create(3);
+GPIO5.associatedPins[0].$name = "BUZZER";
+GPIO5.associatedPins[1].$name = "LED1";
+GPIO5.associatedPins[2].$name = "LED2";

@@ -1,0 +1,33 @@
+* text=auto eol=lf
+
+# Source and documentation
+*.c       text eol=lf
+*.h       text eol=lf
+*.py      text eol=lf
+*.md      text eol=lf
+*.txt     text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.json    text eol=lf
+*.toml    text eol=lf
+*.xml     text eol=lf
+*.syscfg  text eol=lf
+*.cmd     text eol=crlf
+*.bat     text eol=crlf
+Makefile  text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Hardware and document binaries
+*.png     -text
+*.jpg     -text
+*.jpeg    -text
+*.gif     -text
+*.pdf     -text
+*.xlsx    -text
+*.xls     -text
+*.zip     -text
+*.step    -text
+*.stp     -text
+*.epro    -text
+*.epro2   -text
