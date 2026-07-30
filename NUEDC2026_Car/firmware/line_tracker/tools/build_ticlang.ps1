@@ -53,7 +53,12 @@ $sources = @(
     (Join-Path $sourceRoot 'ti\devices\msp\m0p\startup_system_files\ticlang\startup_mspm0g350x_ticlang.c')
 )
 if ($AppSource -eq 'app\main.c') {
-    $sources = @((Join-Path $projectRoot 'core\line_tracker.c')) + $sources
+    $sources = @(
+        (Join-Path $projectRoot 'core\line_tracker.c'),
+        (Join-Path $projectRoot 'core\wheel_speed_pi.c')
+    ) + $sources
+} elseif ($AppSource -eq 'app\main_wheel_pi_bench.c') {
+    $sources = @((Join-Path $projectRoot 'core\wheel_speed_pi.c')) + $sources
 }
 $compileArgs = @(
     '-c', "@$(Join-Path $OutputDirectory 'device.opt')", '-std=c11',
