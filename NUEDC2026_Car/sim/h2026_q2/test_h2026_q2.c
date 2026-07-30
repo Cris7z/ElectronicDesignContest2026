@@ -483,13 +483,10 @@ static bool test_odometry_only_start_and_finish(void)
 
     /* Wheel centre is on the start datum; a normal line starts immediately. */
     fixture_step(&fixture, 0x18U, true, 0, 0, true, false);
-    CHECK(fixture.output.state == H2026_Q2_STATE_START_ACQUIRE_LINE);
+    CHECK(fixture.output.state == H2026_Q2_STATE_LAP);
     CHECK(!fixture.output.brake);
     CHECK((fixture.output.diagnostics.flags &
            H2026_Q2_DIAG_MARKER_CAPTURED) == 0U);
-
-    fixture_step(&fixture, 0x18U, true, 0, 0, false, false);
-    CHECK(fixture.output.state == H2026_Q2_STATE_LAP);
 
     fixture_step(&fixture, 0x18U, true, 100, 100, false, false);
     CHECK(fixture.output.state == H2026_Q2_STATE_LAP);

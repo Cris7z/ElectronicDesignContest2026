@@ -1256,11 +1256,14 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
                 transition_state(controller,
                                  H2026_Q2_STATE_SEEK_START_MARKER);
             } else if (input->line_frame.valid &&
-                       !controller->config.use_start_finish_marker) {
-                /* The wheel datum is on the start line; sensor is 10 cm ahead. */
+                       !controller->config.use_start_finish_marker &&
+                       (controller->line.classification ==
+                        H2026_Q2_LINE_NORMAL) &&
+                       controller->line.centroid_valid) {
+                /* BLS starts normal tracking; transverse start lines are unused. */
                 begin_start(controller);
                 transition_state(controller,
-                                 H2026_Q2_STATE_START_ACQUIRE_LINE);
+                                 H2026_Q2_STATE_LAP);
             } else {
                 ++controller->rejected_start_count;
             }

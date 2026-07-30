@@ -25,7 +25,6 @@
 #define STALL_MEASURED_MAX_MPS       0.02f
 /* Let a loaded chassis overcome static friction before declaring a stall. */
 #define STALL_CONFIRM_TICKS         400U  /* 2.0 s at the 5 ms control rate */
-#define CALIBRATION_ENTER_HOLD_TICKS 200U
 #define CALIBRATION_AUTO_BOOT_DELAY_TICKS 3000U
 #define CALIBRATION_WHITE_TICKS      200U
 #define CALIBRATION_BLACK_TICKS     1000U
@@ -220,20 +219,16 @@ static bool line_calibration_service(void)
 
     if ((s_line_calibration_state == APP_CAL_COMPLETE) ||
         (s_line_calibration_state == APP_CAL_FAILED)) {
-        /*
-         * BLS/PA18 is unavailable on this chassis. Keep the terminal result
-         * visible instead of clearing it one tick later; a deliberate retry
-         * is initiated by a new firmware download during commissioning.
-         */
+        /* Keep the terminal result visible until the next firmware download. */
         return false;
     }
     if ((s_line_calibration_state == APP_CAL_IDLE) &&
         (s_output.state == H2026_Q2_STATE_IDLE)) {
         /*
-         * PA18/BLS is physically unavailable on this chassis.  If no valid
-         * calibration was restored, automatically collect one after a
-         * fifteen-second white-background positioning window.  A valid saved
-         * calibration suppresses this path on later boots.
+         * If no valid calibration was restored, collect one after a
+         * fifteen-second white-background positioning window. A valid saved
+         * calibration suppresses this fallback on later boots. BLS is a
+         * start/stop control only; a long press must not silently erase it.
          */
         if (!s_auto_calibration_checked) {
             if (h2026_q2_app_line_calibration_get(&calibration)) {
@@ -243,9 +238,6 @@ static bool line_calibration_service(void)
                 s_auto_calibration_checked = true;
                 line_calibration_begin();
             }
-        } else if (s_button.stable_pressed &&
-                   (s_button.held_ticks >= CALIBRATION_ENTER_HOLD_TICKS)) {
-            line_calibration_begin();
         }
     }
     if (s_line_calibration_state == APP_CAL_IDLE) {
@@ -801,9 +793,10 @@ static void run_control_tick(uint32_t overrun_count)
             (s_output.state == H2026_Q2_STATE_FAULT) ||
             app_fault_is_recoverable(s_app_fault)) {
             reset_for_retry();
-        } else if ((s_output.state == H2026_Q2_STATE_IDLE) &&
-                   (s_app_fault == APP_FAULT_NONE)) {
-            /* Core validates an ordinary usable line in odometry-only mode. */
+        }
+        if ((s_output.state == H2026_Q2_STATE_IDLE) &&
+            (s_app_fault == APP_FAULT_NONE)) {
+            /* A recovery press is also the new start request. */
             s_input.start_event = true;
         }
     }
@@ -876,12 +869,16 @@ int main(void)
                             s_line_adc.raw_adc,
                             (uint32_t)s_app_fault);
     /*
-     * Show the first normal status page before entering the scheduler. This
-     * one-time boot transfer cannot affect a running control period; later
-     * frames remain one-page-per-tick foreground work.
+     * Show the first normal status page before entering the scheduler. The
+     * timer is already running, and this one-time eight-page I2C transfer can
+     * span several 5 ms periods. Discard those boot-only ticks afterwards;
+     * otherwise they are incorrectly reported as a runtime deadline miss and
+     * permanently lock out the motors with APP_FAULT_TICK_OVERRUN.
      */
     while (!h2026_q2_display_flush_one_page()) {
     }
+    (void)h2026_bsp_take_control_tick(&overrun_count);
+    s_last_overrun_count = overrun_count;
 
     for (;;) {
         if (h2026_bsp_take_control_tick(&overrun_count)) {
