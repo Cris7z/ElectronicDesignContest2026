@@ -12,6 +12,7 @@
 #define H2026_LINE_US_PER_TIMER_COUNT         8u
 #define H2026_OLED_I2C_ADDRESS             0x3Cu
 #define H2026_OLED_I2C_MAX_PAYLOAD           16u
+#define H2026_OLED_I2C_ASYNC_MAX_PAYLOAD       7u
 #define H2026_OLED_I2C_SPIN_GUARD        20000u
 #define H2026_DISPLAY_PERIOD_TICKS \
     (H2026_BSP_DISPLAY_PERIOD_MS / H2026_BSP_CONTROL_PERIOD_MS)
@@ -34,8 +35,10 @@ static volatile bool s_control_tick_pending;
 static volatile uint32_t s_control_ticks;
 static volatile uint32_t s_control_tick_overruns;
 static volatile bool s_display_refresh_pending;
-static uint8_t s_display_tick_divider;
+static uint16_t s_display_tick_divider;
 static volatile uint32_t s_display_counter;
+static bool s_oled_async_pending;
+static uint8_t s_oled_async_tx[H2026_OLED_I2C_ASYNC_MAX_PAYLOAD + 1u];
 
 static volatile uint32_t s_line_scan_count;
 static volatile uint32_t s_line_scan_failures;
@@ -120,18 +123,18 @@ static void update_right_encoder(void)
 static uint32_t duty_to_compare(float duty, uint32_t period)
 {
     if (!(duty == duty) || duty <= 0.0f) {
-        return 0u;
-    }
-    if (duty >= 1.0f) {
         return period;
     }
+    if (duty >= 1.0f) {
+        return 0u;
+    }
     /*
-     * TIMA1 is configured low at reset and high from the zero event until
-     * compare.  Thus compare/period is the high-time duty.  The previous
-     * complement inverted torque: the 10 %% bench test drove at about 90 %%
-     * while a closed-loop 81 %% request drove at only about 19 %%.
+     * TIMA1 CCP output is active low from the zero event to compare.  The
+     * TB6612 receives the complementary high-time, so requested high-duty is
+     * (period - compare) / period.  Returning compare directly inverted the
+     * requested duty: a 2 %% request physically drove at about 98 %%.
      */
-    return (uint32_t)(duty * (float)period + 0.5f);
+    return period - (uint32_t)(duty * (float)period + 0.5f);
 }
 
 static void set_left_pwm(float duty)
@@ -380,6 +383,7 @@ bool h2026_bsp_init(void)
     s_display_refresh_pending = false;
     s_display_tick_divider = 0u;
     s_display_counter = 0u;
+    s_oled_async_pending = false;
     s_line_scan_count = 0u;
     s_line_scan_failures = 0u;
     s_line_scan_max_us = 0u;
@@ -659,6 +663,55 @@ void h2026_bsp_oled_write_data(const uint8_t *data, size_t length)
         data += chunk;
         length -= chunk;
     }
+}
+
+static bool oled_i2c_try_write(uint8_t control,
+                               const uint8_t *data,
+                               size_t length)
+{
+    const uint32_t status = DL_I2C_getControllerStatus(I2C_OLED_INST);
+    const uint16_t total = (uint16_t)(length + 1u);
+
+    if (s_oled_async_pending) {
+        if ((status & DL_I2C_CONTROLLER_STATUS_ERROR) != 0u) {
+            DL_I2C_flushControllerTXFIFO(I2C_OLED_INST);
+            s_oled_async_pending = false;
+            return false;
+        }
+        if ((status & DL_I2C_CONTROLLER_STATUS_BUSY) != 0u) {
+            return false;
+        }
+        s_oled_async_pending = false;
+        return true;
+    }
+
+    if ((data == NULL) || (length == 0u) ||
+        (length > H2026_OLED_I2C_ASYNC_MAX_PAYLOAD) ||
+        ((status & DL_I2C_CONTROLLER_STATUS_IDLE) == 0u)) {
+        return false;
+    }
+
+    s_oled_async_tx[0] = control;
+    memcpy(&s_oled_async_tx[1], data, length);
+    if (DL_I2C_fillControllerTXFIFO(I2C_OLED_INST,
+                                    s_oled_async_tx, total) != total) {
+        DL_I2C_flushControllerTXFIFO(I2C_OLED_INST);
+        return false;
+    }
+    DL_I2C_startControllerTransfer(I2C_OLED_INST, H2026_OLED_I2C_ADDRESS,
+        DL_I2C_CONTROLLER_DIRECTION_TX, total);
+    s_oled_async_pending = true;
+    return false;
+}
+
+bool h2026_bsp_oled_try_write_command(uint8_t command)
+{
+    return oled_i2c_try_write(0x00u, &command, 1u);
+}
+
+bool h2026_bsp_oled_try_write_data(const uint8_t *data, size_t length)
+{
+    return oled_i2c_try_write(0x40u, data, length);
 }
 
 void h2026_bsp_uart0_write(const uint8_t *data, size_t length)
