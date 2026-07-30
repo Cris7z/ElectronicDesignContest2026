@@ -2,34 +2,19 @@
 
 #include "ti_msp_dl_config.h"
 
-/*
- * The control timer runs at 125 kHz after SysConfig's /256 prescaler.
- * The legacy U3 interface uses PB16/PB17 as open-drain software I2C.  A complete
- * register-select + one-byte read normally takes about 1.1 to 1.5 ms at the
- * effective initial rate of about 33 kHz.  Two milliseconds is deliberately
- * strict while still leaving
- * margin for clock stretching.  The iteration guard is a second line of
- * defence if interrupts are accidentally disabled.
- */
-#define H2026_I2C_TIMEOUT_TIMER_COUNTS 250u
-#define H2026_I2C_SPIN_GUARD           200000u
-#define H2026_SOFT_I2C_HALF_PERIOD_CYCLES (CPUCLK_FREQ / 100000u)
-#define H2026_SOFT_I2C_SCL_RISE_SPIN_GUARD 1000u
-#define H2026_OLED_HALF_PERIOD_CYCLES     (CPUCLK_FREQ / 2000000u)
-#define H2026_OLED_RESET_LOW_CYCLES    (CPUCLK_FREQ / 500u)
-#define H2026_OLED_RESET_WAIT_CYCLES   (CPUCLK_FREQ / 100u)
+#include <string.h>
+
+#define H2026_LINE_SETTLE_US               100u
+#define H2026_LINE_SETTLE_CYCLES ((CPUCLK_FREQ / 1000000u) * H2026_LINE_SETTLE_US)
+#define H2026_LINE_ADC_AVERAGES              4u
+#define H2026_LINE_ADC_SPIN_GUARD        20000u
+#define H2026_LINE_SCAN_LIMIT_US          1200u
+#define H2026_LINE_US_PER_TIMER_COUNT         8u
+#define H2026_OLED_I2C_ADDRESS             0x3Cu
+#define H2026_OLED_I2C_MAX_PAYLOAD           16u
+#define H2026_OLED_I2C_SPIN_GUARD        20000u
 #define H2026_DISPLAY_PERIOD_TICKS \
     (H2026_BSP_DISPLAY_PERIOD_MS / H2026_BSP_CONTROL_PERIOD_MS)
-/* Manual UART state traffic is one request byte and one response byte. */
-#define H2026_LINE_UART_RESPONSE_TIMEOUT_TICKS 4u
-#define H2026_LINE_UART_STALE_TICKS            6u
-
-typedef struct {
-    uint32_t control_ticks;
-    uint32_t timer_count;
-    uint32_t spin_guard;
-} i2c_deadline_t;
-
 typedef struct {
     int8_t applied_sign;
     int8_t pending_sign;
@@ -40,6 +25,8 @@ static volatile int64_t s_encoder_left;
 static volatile int64_t s_encoder_right;
 static volatile uint32_t s_encoder_left_invalid;
 static volatile uint32_t s_encoder_right_invalid;
+static volatile uint32_t s_encoder_left_events;
+static volatile uint32_t s_encoder_right_events;
 static volatile uint8_t s_encoder_left_phase;
 static volatile uint8_t s_encoder_right_phase;
 
@@ -50,18 +37,10 @@ static volatile bool s_display_refresh_pending;
 static uint8_t s_display_tick_divider;
 static volatile uint32_t s_display_counter;
 
-static volatile uint32_t s_i2c_transactions;
-static volatile uint32_t s_i2c_timeouts;
-static volatile uint32_t s_i2c_bus_errors;
-
-static bool s_line_uart_request_pending;
-static bool s_line_uart_have_state;
-static uint8_t s_line_uart_state;
-static uint32_t s_line_uart_request_tick;
-static uint32_t s_line_uart_last_state_tick;
-static volatile uint32_t s_line_uart_requests;
-static volatile uint32_t s_line_uart_responses;
-static volatile uint32_t s_line_uart_timeouts;
+static volatile uint32_t s_line_scan_count;
+static volatile uint32_t s_line_scan_failures;
+static volatile uint32_t s_line_scan_max_us;
+static uint32_t s_line_sample_seq;
 
 static uint32_t s_pwm_motor_period;
 static bool s_motor_armed;
@@ -141,12 +120,18 @@ static void update_right_encoder(void)
 static uint32_t duty_to_compare(float duty, uint32_t period)
 {
     if (!(duty == duty) || duty <= 0.0f) {
-        return period;
-    }
-    if (duty >= 1.0f) {
         return 0u;
     }
-    return (uint32_t)((1.0f - duty) * (float)period + 0.5f);
+    if (duty >= 1.0f) {
+        return period;
+    }
+    /*
+     * TIMA1 is configured low at reset and high from the zero event until
+     * compare.  Thus compare/period is the high-time duty.  The previous
+     * complement inverted torque: the 10 %% bench test drove at about 90 %%
+     * while a closed-loop 81 %% request drove at only about 19 %%.
+     */
+    return (uint32_t)(duty * (float)period + 0.5f);
 }
 
 static void set_left_pwm(float duty)
@@ -305,278 +290,76 @@ static void set_signed_one_right(float duty, uint32_t control_tick)
     }
 }
 
-static i2c_deadline_t i2c_deadline_start(void)
+static void line_mux_select(uint8_t channel)
 {
-    i2c_deadline_t deadline;
-    uint32_t primask = __get_PRIMASK();
-    __disable_irq();
-    deadline.control_ticks = s_control_ticks;
-    deadline.timer_count = DL_TimerG_getTimerCount(TIMER_CONTROL_INST);
-    __set_PRIMASK(primask);
-    deadline.spin_guard = H2026_I2C_SPIN_GUARD;
-    return deadline;
-}
-
-static bool i2c_deadline_expired(i2c_deadline_t *deadline)
-{
-    uint32_t ticks;
-    uint32_t timer_count;
-    uint32_t periods;
-    uint32_t elapsed;
-
-    if (deadline->spin_guard == 0u) {
-        return true;
+    if ((channel & 0x04u) != 0u) {
+        DL_GPIO_setPins(GPIO_LINE_MUX_LINE_AD2_PORT,
+                        GPIO_LINE_MUX_LINE_AD2_PIN);
+    } else {
+        DL_GPIO_clearPins(GPIO_LINE_MUX_LINE_AD2_PORT,
+                          GPIO_LINE_MUX_LINE_AD2_PIN);
     }
-    --deadline->spin_guard;
-
-    /*
-     * Read tick generation before and after the counter.  If an overflow
-     * lands between the reads, retry once so the pair describes one period.
-     */
-    do {
-        ticks = s_control_ticks;
-        timer_count = DL_TimerG_getTimerCount(TIMER_CONTROL_INST);
-    } while (ticks != s_control_ticks);
-
-    periods = ticks - deadline->control_ticks;
-    elapsed = periods * (TIMER_CONTROL_INST_LOAD_VALUE + 1u) +
-              deadline->timer_count;
-    if (elapsed < timer_count) {
-        /* Counter wrapped but its ISR has not yet updated the generation. */
-        return true;
+    if ((channel & 0x02u) != 0u) {
+        DL_GPIO_setPins(GPIO_LINE_MUX_LINE_AD1_PORT,
+                        GPIO_LINE_MUX_LINE_AD1_PIN);
+    } else {
+        DL_GPIO_clearPins(GPIO_LINE_MUX_LINE_AD1_PORT,
+                          GPIO_LINE_MUX_LINE_AD1_PIN);
     }
-    elapsed -= timer_count;
-    return elapsed >= H2026_I2C_TIMEOUT_TIMER_COUNTS;
+    if ((channel & 0x01u) != 0u) {
+        DL_GPIO_setPins(GPIO_LINE_MUX_LINE_AD0_PORT,
+                        GPIO_LINE_MUX_LINE_AD0_PIN);
+    } else {
+        DL_GPIO_clearPins(GPIO_LINE_MUX_LINE_AD0_PORT,
+                          GPIO_LINE_MUX_LINE_AD0_PIN);
+    }
 }
 
-/*
- * H8's PB6/PB7 pads were proved electrically isolated from the MCU on the
- * assembled vehicle, so U3 PB16/PB17 are used instead. The sensor provides
- * the verified 3.3 V pull-ups, so drive-low means output=0 and a logic high
- * is always made by disabling the GPIO output. Never drive high.
- */
-static void soft_i2c_delay(void)
+static bool line_adc_convert(uint16_t *value)
 {
-    delay_cycles(H2026_SOFT_I2C_HALF_PERIOD_CYCLES);
-}
+    uint32_t guard = H2026_LINE_ADC_SPIN_GUARD;
 
-static void soft_i2c_scl_low(void)
-{
-    DL_GPIO_clearPins(
-        GPIO_LINE_SOFT_I2C_PORT, GPIO_LINE_SOFT_I2C_LINE_SCL_PIN);
-    DL_GPIO_enableOutput(
-        GPIO_LINE_SOFT_I2C_PORT, GPIO_LINE_SOFT_I2C_LINE_SCL_PIN);
-}
-
-static void soft_i2c_sda_low(void)
-{
-    DL_GPIO_clearPins(
-        GPIO_LINE_SOFT_I2C_PORT, GPIO_LINE_SOFT_I2C_LINE_SDA_PIN);
-    DL_GPIO_enableOutput(
-        GPIO_LINE_SOFT_I2C_PORT, GPIO_LINE_SOFT_I2C_LINE_SDA_PIN);
-}
-
-static void soft_i2c_scl_release(void)
-{
-    DL_GPIO_disableOutput(
-        GPIO_LINE_SOFT_I2C_PORT, GPIO_LINE_SOFT_I2C_LINE_SCL_PIN);
-}
-
-static void soft_i2c_sda_release(void)
-{
-    DL_GPIO_disableOutput(
-        GPIO_LINE_SOFT_I2C_PORT, GPIO_LINE_SOFT_I2C_LINE_SDA_PIN);
-}
-
-static void soft_i2c_release_bus(void)
-{
-    soft_i2c_scl_release();
-    soft_i2c_sda_release();
-}
-
-static bool soft_i2c_scl_high(void)
-{
-    return (DL_GPIO_readPins(
-                GPIO_LINE_SOFT_I2C_PORT,
-                GPIO_LINE_SOFT_I2C_LINE_SCL_PIN) != 0u);
-}
-
-static bool soft_i2c_sda_high(void)
-{
-    return (DL_GPIO_readPins(
-                GPIO_LINE_SOFT_I2C_PORT,
-                GPIO_LINE_SOFT_I2C_LINE_SDA_PIN) != 0u);
-}
-
-static bool soft_i2c_raise_scl(
-    i2c_deadline_t *deadline, bool *timed_out)
-{
-    uint32_t rise_spins = H2026_SOFT_I2C_SCL_RISE_SPIN_GUARD;
-
-    if (i2c_deadline_expired(deadline)) {
-        *timed_out = true;
+    if (value == NULL) {
         return false;
     }
-    soft_i2c_scl_release();
-    while (!soft_i2c_scl_high()) {
-        /*
-         * A connected I2C slave may stretch SCL, but an unconnected U3 or a
-         * shorted line must not consume the entire 5 ms control period.  A
-         * normal external pull-up rises in a few microseconds; 1000 GPIO
-         * polls is deliberately much longer than that while remaining fast.
-         */
-        if (rise_spins == 0u) {
-            return false;
-        }
-        --rise_spins;
-        if (i2c_deadline_expired(deadline)) {
-            *timed_out = true;
-            return false;
-        }
+    DL_ADC12_clearInterruptStatus(
+        ADC_LINE_SENSOR_INST, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
+    DL_ADC12_startConversion(ADC_LINE_SENSOR_INST);
+    while ((DL_ADC12_getRawInterruptStatus(
+                ADC_LINE_SENSOR_INST,
+                DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED) == 0u) &&
+           (guard > 0u)) {
+        --guard;
     }
-    soft_i2c_delay();
+    if (guard == 0u) {
+        DL_ADC12_stopConversion(ADC_LINE_SENSOR_INST);
+        return false;
+    }
+    *value = DL_ADC12_getMemResult(
+        ADC_LINE_SENSOR_INST, DL_ADC12_MEM_IDX_0);
+    DL_ADC12_enableConversions(ADC_LINE_SENSOR_INST);
     return true;
 }
 
-static bool soft_i2c_start(i2c_deadline_t *deadline, bool *timed_out)
+static uint16_t line_elapsed_us(uint32_t start_tick, uint32_t start_count)
 {
-    /* Also works as a repeated START because SDA is released while SCL is low. */
-    soft_i2c_sda_release();
-    soft_i2c_scl_release();
-    if (!soft_i2c_raise_scl(deadline, timed_out)) {
-        return false;
-    }
-    if (!soft_i2c_sda_high()) {
-        return false;
-    }
+    const uint32_t end_tick = s_control_ticks;
+    const uint32_t end_count = DL_TimerG_getTimerCount(TIMER_CONTROL_INST);
+    uint32_t elapsed_counts =
+        (end_tick - start_tick) * (TIMER_CONTROL_INST_LOAD_VALUE + 1u);
 
-    soft_i2c_sda_low();
-    soft_i2c_delay();
-    soft_i2c_scl_low();
-    soft_i2c_delay();
-    return true;
-}
-
-static bool soft_i2c_stop(i2c_deadline_t *deadline, bool *timed_out)
-{
-    soft_i2c_sda_low();
-    soft_i2c_delay();
-    if (!soft_i2c_raise_scl(deadline, timed_out)) {
-        return false;
+    if (start_count >= end_count) {
+        elapsed_counts += start_count - end_count;
+    } else {
+        elapsed_counts += start_count +
+            (TIMER_CONTROL_INST_LOAD_VALUE + 1u) - end_count;
     }
-    soft_i2c_sda_release();
-    soft_i2c_delay();
-    return soft_i2c_sda_high();
-}
-
-static bool soft_i2c_write_byte(
-    uint8_t value, i2c_deadline_t *deadline, bool *timed_out)
-{
-    uint8_t bit_mask;
-
-    for (bit_mask = 0x80u; bit_mask != 0u; bit_mask >>= 1u) {
-        if ((value & bit_mask) != 0u) {
-            soft_i2c_sda_release();
-        } else {
-            soft_i2c_sda_low();
-        }
-        soft_i2c_delay();
-        if (!soft_i2c_raise_scl(deadline, timed_out)) {
-            return false;
-        }
-        soft_i2c_scl_low();
-        soft_i2c_delay();
-    }
-
-    /* Ninth clock: the slave ACKs by pulling SDA low. */
-    soft_i2c_sda_release();
-    soft_i2c_delay();
-    if (!soft_i2c_raise_scl(deadline, timed_out)) {
-        return false;
-    }
-    if (soft_i2c_sda_high()) {
-        soft_i2c_scl_low();
-        soft_i2c_delay();
-        return false;
-    }
-    soft_i2c_scl_low();
-    soft_i2c_delay();
-    return true;
-}
-
-static bool soft_i2c_read_byte_nack(
-    uint8_t *value, i2c_deadline_t *deadline, bool *timed_out)
-{
-    uint8_t bit_mask;
-    uint8_t received = 0u;
-
-    for (bit_mask = 0x80u; bit_mask != 0u; bit_mask >>= 1u) {
-        soft_i2c_sda_release();
-        soft_i2c_delay();
-        if (!soft_i2c_raise_scl(deadline, timed_out)) {
-            return false;
-        }
-        if (soft_i2c_sda_high()) {
-            received |= bit_mask;
-        }
-        soft_i2c_scl_low();
-        soft_i2c_delay();
-    }
-
-    /* This is the only byte, so leave SDA released to send NACK. */
-    soft_i2c_sda_release();
-    soft_i2c_delay();
-    if (!soft_i2c_raise_scl(deadline, timed_out)) {
-        return false;
-    }
-    soft_i2c_scl_low();
-    soft_i2c_delay();
-    *value = received;
-    return true;
-}
-
-static void soft_i2c_recover_after_failure(void)
-{
-    i2c_deadline_t deadline = i2c_deadline_start();
-    bool timed_out = false;
-
-    /* Nine released clocks give a partially transferred slave a way to reset. */
-    soft_i2c_sda_release();
-    for (uint8_t pulse = 0u; pulse < 9u; ++pulse) {
-        soft_i2c_scl_low();
-        soft_i2c_delay();
-        if (!soft_i2c_raise_scl(&deadline, &timed_out)) {
-            break;
-        }
-    }
-    if (!timed_out) {
-        (void)soft_i2c_stop(&deadline, &timed_out);
-    }
-    /* Never leave an output enabled on either external sensor line. */
-    soft_i2c_release_bus();
-}
-
-static void line_uart_drain_rx(void)
-{
-    while (!DL_UART_Main_isRXFIFOEmpty(UART_LINE_SENSOR_INST)) {
-        (void)DL_UART_Main_receiveData(UART_LINE_SENSOR_INST);
-    }
-}
-
-static bool line_uart_try_transmit(uint8_t byte)
-{
-    if (DL_UART_Main_isTXFIFOFull(UART_LINE_SENSOR_INST)) {
-        return false;
-    }
-    DL_UART_Main_transmitData(UART_LINE_SENSOR_INST, byte);
-    return true;
+    return (uint16_t)(elapsed_counts * H2026_LINE_US_PER_TIMER_COUNT);
 }
 
 bool h2026_bsp_init(void)
 {
     SYSCFG_DL_init();
-    soft_i2c_release_bus();
-    line_uart_drain_rx();
 
     s_pwm_motor_period = DL_TimerA_getLoadValue(PWM_MOTOR_INST) + 1u;
     s_motor_armed = false;
@@ -586,6 +369,8 @@ bool h2026_bsp_init(void)
     s_encoder_right = 0;
     s_encoder_left_invalid = 0u;
     s_encoder_right_invalid = 0u;
+    s_encoder_left_events = 0u;
+    s_encoder_right_events = 0u;
     s_encoder_left_phase = read_left_phase();
     s_encoder_right_phase = read_right_phase();
 
@@ -595,19 +380,10 @@ bool h2026_bsp_init(void)
     s_display_refresh_pending = false;
     s_display_tick_divider = 0u;
     s_display_counter = 0u;
-    s_i2c_transactions = 0u;
-    s_i2c_timeouts = 0u;
-    s_i2c_bus_errors = 0u;
-    s_line_uart_request_pending = false;
-    s_line_uart_have_state = false;
-    s_line_uart_state = 0u;
-    s_line_uart_request_tick = 0u;
-    s_line_uart_last_state_tick = 0u;
-    s_line_uart_requests = 0u;
-    s_line_uart_responses = 0u;
-    s_line_uart_timeouts = 0u;
-    /* HiWonder command 0 selects manual request/response state mode. */
-    (void)line_uart_try_transmit(0u);
+    s_line_scan_count = 0u;
+    s_line_scan_failures = 0u;
+    s_line_scan_max_us = 0u;
+    s_line_sample_seq = 0u;
 
     DL_GPIO_clearInterruptStatus(
         GPIO_ENCODER_LEFT_PORT,
@@ -744,98 +520,66 @@ void h2026_bsp_encoder_snapshot(h2026_bsp_encoder_snapshot_t *snapshot)
     snapshot->right_count = s_encoder_right;
     snapshot->left_invalid_transitions = s_encoder_left_invalid;
     snapshot->right_invalid_transitions = s_encoder_right_invalid;
+    snapshot->left_edge_events = s_encoder_left_events;
+    snapshot->right_edge_events = s_encoder_right_events;
+    snapshot->left_phase = s_encoder_left_phase;
+    snapshot->right_phase = s_encoder_right_phase;
     __set_PRIMASK(primask);
 }
 
-bool h2026_bsp_line_read_reg5(uint8_t *state)
+bool h2026_bsp_line_scan(h2026_bsp_line_sample_t *sample)
 {
-    i2c_deadline_t deadline;
-    bool timed_out = false;
+    uint8_t channel;
+    uint32_t start_tick;
+    uint32_t start_count;
 
-    if (state == NULL) {
+    if (sample == NULL) {
         return false;
     }
-    ++s_i2c_transactions;
-    deadline = i2c_deadline_start();
+    memset(sample, 0, sizeof(*sample));
+    start_tick = s_control_ticks;
+    start_count = DL_TimerG_getTimerCount(TIMER_CONTROL_INST);
 
-    /*
-     * HiWonder's reference implementation ends the register-select write
-     * before issuing the one-byte read.  Although a repeated START is legal
-     * I2C, this module's firmware is verified with STOP + new START; using
-     * that exact sequence also prevents it from holding SCL after a transfer.
-     *
-     * START, 0xBA, register 5, STOP, START, 0xBB, one byte+NACK, STOP.
-     */
-    if (!soft_i2c_start(&deadline, &timed_out) ||
-        !soft_i2c_write_byte(
-            (uint8_t)(H2026_BSP_LINE_I2C_ADDRESS_7BIT << 1u),
-            &deadline,
-            &timed_out) ||
-        !soft_i2c_write_byte(
-            H2026_BSP_LINE_STATE_REGISTER, &deadline, &timed_out) ||
-        !soft_i2c_stop(&deadline, &timed_out) ||
-        !soft_i2c_start(&deadline, &timed_out) ||
-        !soft_i2c_write_byte(
-            (uint8_t)((H2026_BSP_LINE_I2C_ADDRESS_7BIT << 1u) | 1u),
-            &deadline,
-            &timed_out) ||
-        !soft_i2c_read_byte_nack(state, &deadline, &timed_out) ||
-        !soft_i2c_stop(&deadline, &timed_out)) {
+    for (channel = 0u; channel < H2026_BSP_LINE_SENSOR_COUNT; ++channel) {
+        uint32_t accumulator = 0u;
+        uint8_t conversion;
+        uint16_t discarded;
+
+        line_mux_select(channel);
+        delay_cycles(H2026_LINE_SETTLE_CYCLES);
+        if (!line_adc_convert(&discarded)) {
+            goto fail;
+        }
+        for (conversion = 0u; conversion < H2026_LINE_ADC_AVERAGES;
+             ++conversion) {
+            uint16_t value;
+            if (!line_adc_convert(&value)) {
+                goto fail;
+            }
+            accumulator += value;
+        }
+        sample->raw_adc[channel] = (uint16_t)(
+            (accumulator + (H2026_LINE_ADC_AVERAGES / 2u)) /
+            H2026_LINE_ADC_AVERAGES);
+    }
+
+    sample->scan_us = line_elapsed_us(start_tick, start_count);
+    if (sample->scan_us > H2026_LINE_SCAN_LIMIT_US) {
         goto fail;
     }
+    ++s_line_scan_count;
+    if (sample->scan_us > s_line_scan_max_us) {
+        s_line_scan_max_us = sample->scan_us;
+    }
+    ++s_line_sample_seq;
+    sample->sample_seq = s_line_sample_seq;
+    sample->valid = true;
     return true;
 
 fail:
-    if (timed_out) {
-        ++s_i2c_timeouts;
-    } else {
-        ++s_i2c_bus_errors;
-    }
-    soft_i2c_recover_after_failure();
-    return false;
-}
-
-bool h2026_bsp_line_uart_read_state(uint8_t *state)
-{
-    bool received = false;
-    const uint32_t now = s_control_ticks;
-
-    if (state == NULL) {
-        return false;
-    }
-
-    /* Manual-state protocol returns precisely one byte after command 1. */
-    while (!DL_UART_Main_isRXFIFOEmpty(UART_LINE_SENSOR_INST)) {
-        s_line_uart_state =
-            (uint8_t)DL_UART_Main_receiveData(UART_LINE_SENSOR_INST);
-        received = true;
-    }
-    if (received) {
-        s_line_uart_have_state = true;
-        s_line_uart_last_state_tick = now;
-        s_line_uart_request_pending = false;
-        ++s_line_uart_responses;
-    }
-
-    if (s_line_uart_request_pending &&
-        ((uint32_t)(now - s_line_uart_request_tick) >=
-         H2026_LINE_UART_RESPONSE_TIMEOUT_TICKS)) {
-        s_line_uart_request_pending = false;
-        ++s_line_uart_timeouts;
-    }
-
-    if (!s_line_uart_request_pending && line_uart_try_transmit(1u)) {
-        s_line_uart_request_pending = true;
-        s_line_uart_request_tick = now;
-        ++s_line_uart_requests;
-    }
-
-    if (s_line_uart_have_state &&
-        ((uint32_t)(now - s_line_uart_last_state_tick) <=
-         H2026_LINE_UART_STALE_TICKS)) {
-        *state = s_line_uart_state;
-        return true;
-    }
+    DL_ADC12_enableConversions(ADC_LINE_SENSOR_INST);
+    ++s_line_scan_failures;
+    sample->scan_us = line_elapsed_us(start_tick, start_count);
     return false;
 }
 
@@ -853,48 +597,67 @@ void h2026_bsp_led_set(bool on)
     }
 }
 
-static void oled_shift_byte(uint8_t value)
+static bool oled_i2c_write(uint8_t control, const uint8_t *data, size_t length)
 {
-    for (uint8_t bit = 0u; bit < 8u; ++bit) {
-        DL_GPIO_clearPins(GPIO_OLED_SCL_PORT, GPIO_OLED_SCL_PIN);
-        if ((value & 0x80u) != 0u) {
-            DL_GPIO_setPins(GPIO_OLED_SDA_PORT, GPIO_OLED_SDA_PIN);
-        } else {
-            DL_GPIO_clearPins(GPIO_OLED_SDA_PORT, GPIO_OLED_SDA_PIN);
-        }
-        /* About 1 MHz four-wire serial clock: ample setup/hold margin. */
-        delay_cycles(H2026_OLED_HALF_PERIOD_CYCLES);
-        DL_GPIO_setPins(GPIO_OLED_SCL_PORT, GPIO_OLED_SCL_PIN);
-        delay_cycles(H2026_OLED_HALF_PERIOD_CYCLES);
-        value <<= 1u;
-    }
-    DL_GPIO_clearPins(GPIO_OLED_SCL_PORT, GPIO_OLED_SCL_PIN);
-}
+    uint8_t tx[H2026_OLED_I2C_MAX_PAYLOAD + 1u];
+    uint32_t guard;
+    uint16_t sent;
+    uint16_t total;
 
-void h2026_bsp_oled_reset(void)
-{
-    DL_GPIO_clearPins(GPIO_OLED_RST_PORT, GPIO_OLED_RST_PIN);
-    delay_cycles(H2026_OLED_RESET_LOW_CYCLES);
-    DL_GPIO_setPins(GPIO_OLED_RST_PORT, GPIO_OLED_RST_PIN);
-    delay_cycles(H2026_OLED_RESET_WAIT_CYCLES);
+    if ((data == NULL) || (length == 0u) ||
+        (length > H2026_OLED_I2C_MAX_PAYLOAD)) {
+        return false;
+    }
+    tx[0] = control;
+    memcpy(&tx[1], data, length);
+    total = (uint16_t)(length + 1u);
+
+    guard = H2026_OLED_I2C_SPIN_GUARD;
+    while (((DL_I2C_getControllerStatus(I2C_OLED_INST) &
+             DL_I2C_CONTROLLER_STATUS_IDLE) == 0u) && (--guard != 0u)) {
+    }
+    if (guard == 0u) {
+        DL_I2C_flushControllerTXFIFO(I2C_OLED_INST);
+        return false;
+    }
+
+    sent = DL_I2C_fillControllerTXFIFO(I2C_OLED_INST, tx, total);
+    DL_I2C_startControllerTransfer(I2C_OLED_INST, H2026_OLED_I2C_ADDRESS,
+        DL_I2C_CONTROLLER_DIRECTION_TX, total);
+    guard = H2026_OLED_I2C_SPIN_GUARD;
+    while ((sent < total) && (--guard != 0u)) {
+        sent = (uint16_t)(sent + DL_I2C_fillControllerTXFIFO(
+            I2C_OLED_INST, &tx[sent], (uint16_t)(total - sent)));
+    }
+    delay_cycles(24u);
+    while (((DL_I2C_getControllerStatus(I2C_OLED_INST) &
+             DL_I2C_CONTROLLER_STATUS_BUSY) != 0u) && (--guard != 0u)) {
+    }
+    if ((guard == 0u) || (sent != total) ||
+        ((DL_I2C_getControllerStatus(I2C_OLED_INST) &
+          DL_I2C_CONTROLLER_STATUS_ERROR) != 0u)) {
+        DL_I2C_flushControllerTXFIFO(I2C_OLED_INST);
+        return false;
+    }
+    return true;
 }
 
 void h2026_bsp_oled_write_command(uint8_t command)
 {
-    DL_GPIO_clearPins(GPIO_OLED_DC_PORT, GPIO_OLED_DC_PIN);
-    delay_cycles(H2026_OLED_HALF_PERIOD_CYCLES);
-    oled_shift_byte(command);
+    (void)oled_i2c_write(0x00u, &command, 1u);
 }
 
 void h2026_bsp_oled_write_data(const uint8_t *data, size_t length)
 {
-    if (data == NULL) {
-        return;
-    }
-    DL_GPIO_setPins(GPIO_OLED_DC_PORT, GPIO_OLED_DC_PIN);
-    delay_cycles(H2026_OLED_HALF_PERIOD_CYCLES);
-    for (size_t index = 0u; index < length; ++index) {
-        oled_shift_byte(data[index]);
+    while (length > 0u) {
+        const size_t chunk = (length > H2026_OLED_I2C_MAX_PAYLOAD)
+            ? H2026_OLED_I2C_MAX_PAYLOAD : length;
+
+        if (!oled_i2c_write(0x40u, data, chunk)) {
+            return;
+        }
+        data += chunk;
+        length -= chunk;
     }
 }
 
@@ -930,12 +693,9 @@ void h2026_bsp_diagnostics_snapshot(h2026_bsp_diagnostics_t *diagnostics)
     }
     primask = __get_PRIMASK();
     __disable_irq();
-    diagnostics->i2c_transactions = s_i2c_transactions;
-    diagnostics->i2c_timeouts = s_i2c_timeouts;
-    diagnostics->i2c_bus_errors = s_i2c_bus_errors;
-    diagnostics->line_uart_requests = s_line_uart_requests;
-    diagnostics->line_uart_responses = s_line_uart_responses;
-    diagnostics->line_uart_timeouts = s_line_uart_timeouts;
+    diagnostics->line_scan_count = s_line_scan_count;
+    diagnostics->line_scan_failures = s_line_scan_failures;
+    diagnostics->line_scan_max_us = s_line_scan_max_us;
     diagnostics->control_tick_overruns = s_control_tick_overruns;
     __set_PRIMASK(primask);
 }
@@ -951,10 +711,12 @@ void GROUP1_IRQHandler(void)
 
     if (left_status != 0u) {
         DL_GPIO_clearInterruptStatus(GPIO_ENCODER_LEFT_PORT, left_status);
+        ++s_encoder_left_events;
         update_left_encoder();
     }
     if (right_status != 0u) {
         DL_GPIO_clearInterruptStatus(GPIO_ENCODER_RIGHT_PORT, right_status);
+        ++s_encoder_right_events;
         update_right_encoder();
     }
 }

@@ -53,7 +53,7 @@
             --treatWarningsAsErrors
         "
         sourceLookupPath="${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/ti/driverlib"
-        description="Hardware-first H2026 requirement-2 firmware for C07A, D157B and HiWonder LineFollower_8CH v1.0">
+        description="Hardware-first H2026 requirement-2 firmware for C07A, TB6612 and CD4051 gray line sensor">
         <property name="buildProfile" value="release"/>
         <property name="isHybrid" value="true"/>
 

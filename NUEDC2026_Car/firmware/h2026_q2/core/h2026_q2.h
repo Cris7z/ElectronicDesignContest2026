@@ -12,6 +12,8 @@ extern "C" {
 #define H2026_Q2_TICK_MS 5U
 #define H2026_Q2_TICK_S 0.005f
 #define H2026_Q2_MAX_CURVE_SEGMENTS 16U
+#define H2026_Q2_LINE_SENSOR_COUNT 8U
+#define H2026_Q2_LINE_STRENGTH_MAX 1000U
 
 typedef enum {
     H2026_Q2_LINE_NORMAL = 0,
@@ -23,6 +25,10 @@ typedef enum {
 
 typedef enum {
     H2026_Q2_STATE_IDLE = 0,
+    /* BLS was pressed before the forward-mounted sensor sees the track. */
+    H2026_Q2_STATE_START_ACQUIRE_LINE,
+    /* Follow the ordinary track line until the first transverse marker. */
+    H2026_Q2_STATE_SEEK_START_MARKER,
     H2026_Q2_STATE_CLEAR_START,
     H2026_Q2_STATE_LAP,
     H2026_Q2_STATE_FINISH_ARMED,
@@ -35,7 +41,7 @@ typedef enum {
     H2026_Q2_FAULT_NONE = 0,
     H2026_Q2_FAULT_CONFIG,
     H2026_Q2_FAULT_ESTOP,
-    H2026_Q2_FAULT_I2C_TIMEOUT,
+    H2026_Q2_FAULT_LINE_SENSOR_TIMEOUT,
     H2026_Q2_FAULT_LINE_TIMEOUT,
     H2026_Q2_FAULT_MISSION_TIMEOUT,
     H2026_Q2_FAULT_STOPPING_TIMEOUT,
@@ -51,6 +57,30 @@ typedef struct {
     bool centroid_valid;
     float centroid;
 } h2026_q2_line_observation_t;
+
+/*
+ * Transport-neutral snapshot published by the CD4051 scanner.  raw_adc is
+ * diagnostic data; strength is calibrated so 0 means background and 1000
+ * means the tracked black line.  raw_bits is generated with hysteresis and
+ * is retained for the marker/FSM logic.
+ */
+typedef struct {
+    uint16_t raw_adc[H2026_Q2_LINE_SENSOR_COUNT];
+    uint16_t strength[H2026_Q2_LINE_SENSOR_COUNT];
+    uint8_t raw_bits;
+    uint16_t confidence;
+    uint16_t scan_us;
+    uint32_t sample_seq;
+    bool valid;
+} h2026_q2_line_sensor_frame_t;
+
+typedef struct {
+    uint16_t white_adc[H2026_Q2_LINE_SENSOR_COUNT];
+    uint16_t black_adc[H2026_Q2_LINE_SENSOR_COUNT];
+    float sensor_x_mm[H2026_Q2_LINE_SENSOR_COUNT];
+    uint16_t version;
+    uint16_t crc16;
+} h2026_q2_line_calibration_t;
 
 typedef struct {
     float end_distance_m;
@@ -70,10 +100,8 @@ typedef struct {
 } h2026_q2_speed_pi_config_t;
 
 typedef struct {
-    /* HiWonder register-5 normalization; both facts must be measured. */
-    bool sensor_active_high;
-    bool sensor_bit0_is_left;
     uint8_t wide_min_active;
+    float sensor_x_mm[H2026_Q2_LINE_SENSOR_COUNT];
 
     /* Marker capture/detection is learned from the starting marker. */
     uint8_t marker_capture_min_active;
@@ -84,16 +112,24 @@ typedef struct {
     uint32_t marker_release_ms;
     uint32_t marker_confirm_ms;
     float start_clear_distance_m;
+    uint32_t start_acquire_timeout_ms;
+    float start_acquire_speed_mps;
+    /* False: BLS starts directly and one lap is solely odometry-defined. */
+    bool use_start_finish_marker;
     float finish_gate_distance_m;
     uint32_t finish_gate_time_ms;
+    /* Slow down this far before the odometry-only lap target. */
+    float distance_finish_approach_m;
+    /* Slow approach used only when the measured marker-to-stop offset is 0. */
+    float zero_offset_approach_speed_mps;
     float stop_distance_from_marker_m;
     float stop_position_tolerance_m;
     float stop_speed_tolerance_mps;
     uint32_t stop_hold_ms;
 
     /* Safety timeouts. Every duration must be a multiple of 5 ms. */
-    uint32_t i2c_grace_ms;
-    uint32_t i2c_fault_ms;
+    uint32_t line_sensor_grace_ms;
+    uint32_t line_sensor_fault_ms;
     uint32_t line_grace_ms;
     uint32_t line_fault_ms;
     uint32_t mission_timeout_ms;
@@ -113,7 +149,7 @@ typedef struct {
     /* Centre-speed scheduling and bounded acceleration/deceleration. */
     float cruise_speed_mps;
     float minimum_tracking_speed_mps;
-    float degraded_i2c_speed_mps;
+    float degraded_sensor_speed_mps;
     float degraded_line_speed_mps;
     float maximum_wheel_speed_mps;
     float acceleration_limit_mps2;
@@ -145,8 +181,7 @@ typedef struct {
 } h2026_q2_config_t;
 
 typedef struct {
-    uint8_t line_raw_reg5;
-    bool line_i2c_valid;
+    h2026_q2_line_sensor_frame_t line_frame;
     int64_t encoder_left_count;
     int64_t encoder_right_count;
     bool start_event;
@@ -159,7 +194,7 @@ enum {
     H2026_Q2_DIAG_MARKER_CAPTURED = 1UL << 2,
     H2026_Q2_DIAG_MARKER_CANDIDATE = 1UL << 3,
     H2026_Q2_DIAG_FINISH_GATE_OPEN = 1UL << 4,
-    H2026_Q2_DIAG_I2C_DEGRADED = 1UL << 5,
+    H2026_Q2_DIAG_LINE_SENSOR_DEGRADED = 1UL << 5,
     H2026_Q2_DIAG_LINE_DEGRADED = 1UL << 6,
     H2026_Q2_DIAG_LEFT_DUTY_SATURATED = 1UL << 7,
     H2026_Q2_DIAG_RIGHT_DUTY_SATURATED = 1UL << 8,
@@ -177,7 +212,7 @@ typedef struct {
     float marker_edge_distance_m;
     uint32_t marker_release_ms;
     uint32_t marker_confirm_ms;
-    uint32_t i2c_invalid_ms;
+    uint32_t line_sensor_invalid_ms;
     uint32_t line_unusable_ms;
     uint32_t rejected_start_count;
     uint32_t fault_coast_ms;
@@ -227,7 +262,7 @@ typedef struct {
     h2026_q2_fault_t fault;
     uint32_t elapsed_ms;
     uint32_t state_elapsed_ms;
-    uint32_t i2c_invalid_ms;
+    uint32_t line_sensor_invalid_ms;
     uint32_t line_unusable_ms;
     uint32_t marker_release_ms;
     uint32_t marker_confirm_ms;
@@ -280,6 +315,18 @@ void h2026_q2_line_decode(uint8_t raw_bits,
                           bool bit0_is_left,
                           uint8_t wide_min_active,
                           h2026_q2_line_observation_t *observation);
+
+void h2026_q2_line_decode_frame(
+    const h2026_q2_line_sensor_frame_t *frame,
+    const float sensor_x_mm[H2026_Q2_LINE_SENSOR_COUNT],
+    uint8_t wide_min_active,
+    h2026_q2_line_observation_t *observation);
+
+uint16_t h2026_q2_line_calibration_crc16(
+    const h2026_q2_line_calibration_t *calibration);
+
+bool h2026_q2_line_calibration_valid(
+    const h2026_q2_line_calibration_t *calibration);
 
 bool h2026_q2_init(h2026_q2_controller_t *controller,
                    const h2026_q2_config_t *config,

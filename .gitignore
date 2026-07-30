@@ -26,6 +26,10 @@
 *.inspect.ndjson
 *.log
 
+# Per-vehicle calibration sectors contain bench-specific coefficients.  Archive
+# them locally before flashing, but keep the documented values in source.
+/NUEDC2026_Car/firmware/h2026_q2/calibration_backups/
+
 # Python and native build products
 **/__pycache__/
 *.py[cod]

@@ -23,7 +23,12 @@
 #define STALL_TARGET_MIN_MPS         0.12f
 #define STALL_DUTY_MIN               0.25f
 #define STALL_MEASURED_MAX_MPS       0.02f
-#define STALL_CONFIRM_TICKS          60U
+/* Let a loaded chassis overcome static friction before declaring a stall. */
+#define STALL_CONFIRM_TICKS         400U  /* 2.0 s at the 5 ms control rate */
+#define CALIBRATION_ENTER_HOLD_TICKS 200U
+#define CALIBRATION_AUTO_BOOT_DELAY_TICKS 3000U
+#define CALIBRATION_WHITE_TICKS      200U
+#define CALIBRATION_BLACK_TICKS     1000U
 
 typedef enum {
     APP_FAULT_NONE = 0,
@@ -35,6 +40,20 @@ typedef enum {
     APP_FAULT_ENCODER_IMPLAUSIBLE = 6
 } app_fault_t;
 
+typedef enum {
+    APP_CAL_IDLE = 0,
+    APP_CAL_WHITE,
+    APP_CAL_BLACK_SWEEP,
+    APP_CAL_COMPLETE,
+    APP_CAL_FAILED
+} app_calibration_state_t;
+
+typedef enum {
+    APP_CAL_FAIL_NONE = 0,
+    APP_CAL_FAIL_ADC_FRAME = 1,
+    APP_CAL_FAIL_FLASH_STORE = 2
+} app_calibration_failure_t;
+
 typedef struct {
     bool candidate_pressed;
     bool stable_pressed;
@@ -44,7 +63,7 @@ typedef struct {
 } button_filter_t;
 
 typedef struct {
-    char bytes[160];
+    char bytes[256];
     size_t length;
     size_t sent;
 } telemetry_queue_t;
@@ -53,13 +72,14 @@ static h2026_q2_controller_t s_controller;
 static h2026_q2_config_t s_config;
 static h2026_q2_output_t s_output;
 static h2026_q2_input_t s_input;
+static h2026_bsp_line_sample_t s_line_adc;
 static button_filter_t s_button;
 static telemetry_queue_t s_telemetry;
 
 static bool s_controller_ready;
 static app_fault_t s_app_fault;
 static uint32_t s_calibration_locks;
-static uint8_t s_line_raw;
+static uint8_t s_line_bits;
 static uint16_t s_marker_ready_ticks;
 static uint32_t s_last_overrun_count;
 static uint32_t s_left_invalid_previous;
@@ -73,13 +93,28 @@ static uint16_t s_right_stall_ticks;
 static uint16_t s_fault_brake_ticks;
 static uint32_t s_foreground_ticks;
 static bool s_display_job_active;
+static app_calibration_state_t s_line_calibration_state;
+static app_calibration_failure_t s_line_calibration_failure;
+static uint16_t s_line_calibration_ticks;
+static uint32_t s_white_adc_sum[H2026_Q2_LINE_SENSOR_COUNT];
+static uint16_t s_black_adc_candidate[H2026_Q2_LINE_SENSOR_COUNT];
+static uint32_t s_black_adc_delta[H2026_Q2_LINE_SENSOR_COUNT];
+static uint16_t s_auto_calibration_delay_ticks;
+static bool s_auto_calibration_checked;
 
 static bool state_is_moving(h2026_q2_state_t state)
 {
-    return (state == H2026_Q2_STATE_CLEAR_START) ||
+    return (state == H2026_Q2_STATE_START_ACQUIRE_LINE) ||
+           (state == H2026_Q2_STATE_SEEK_START_MARKER) ||
+           (state == H2026_Q2_STATE_CLEAR_START) ||
            (state == H2026_Q2_STATE_LAP) ||
            (state == H2026_Q2_STATE_FINISH_ARMED) ||
            (state == H2026_Q2_STATE_STOPPING);
+}
+
+static float absolute_float(float value)
+{
+    return (value < 0.0f) ? -value : value;
 }
 
 static float line_pattern_center(uint8_t normalized_bits,
@@ -91,7 +126,7 @@ static float line_pattern_center(uint8_t normalized_bits,
     if (active_count == 0U) {
         return 0.0f;
     }
-    for (bit = 0U; bit < 8U; ++bit) {
+    for (bit = 0U; bit < H2026_Q2_LINE_SENSOR_COUNT; ++bit) {
         if ((normalized_bits & (uint8_t)(1U << bit)) != 0U) {
             numerator += ((int)bit * 2) - 7;
         }
@@ -99,9 +134,189 @@ static float line_pattern_center(uint8_t normalized_bits,
     return (float)numerator / ((float)active_count * 7.0f);
 }
 
-static float absolute_float(float value)
+static uint16_t clamp_strength(int32_t value)
 {
-    return (value < 0.0f) ? -value : value;
+    if (value <= 0) {
+        return 0U;
+    }
+    if (value >= (int32_t)H2026_Q2_LINE_STRENGTH_MAX) {
+        return H2026_Q2_LINE_STRENGTH_MAX;
+    }
+    return (uint16_t)value;
+}
+
+static bool line_frame_from_adc(const h2026_bsp_line_sample_t *sample,
+                                h2026_q2_line_sensor_frame_t *frame)
+{
+    h2026_q2_line_calibration_t calibration;
+    uint32_t confidence_sum = 0U;
+    uint8_t index;
+
+    if ((sample == NULL) || (frame == NULL)) {
+        return false;
+    }
+    memset(frame, 0, sizeof(*frame));
+    frame->scan_us = sample->scan_us;
+    frame->sample_seq = sample->sample_seq;
+    for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        const uint8_t source_index =
+            (H2026_Q2_SENSOR_CH1_IS_LEFT == 0) ?
+                (uint8_t)(H2026_Q2_LINE_SENSOR_COUNT - 1U - index) :
+                index;
+        frame->raw_adc[index] = sample->raw_adc[source_index];
+    }
+    if (!sample->valid || !h2026_q2_app_line_calibration_get(&calibration)) {
+        return false;
+    }
+
+    for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        const uint8_t source_index =
+            (H2026_Q2_SENSOR_CH1_IS_LEFT == 0) ?
+                (uint8_t)(H2026_Q2_LINE_SENSOR_COUNT - 1U - index) :
+                index;
+        const int32_t white = (int32_t)calibration.white_adc[source_index];
+        const int32_t black = (int32_t)calibration.black_adc[source_index];
+        const int32_t span = black - white;
+        const int32_t raw = (int32_t)sample->raw_adc[source_index];
+        const uint16_t strength = clamp_strength(
+            ((raw - white) * (int32_t)H2026_Q2_LINE_STRENGTH_MAX) / span);
+        const uint8_t mask = (uint8_t)(1U << index);
+
+        frame->strength[index] = strength;
+        confidence_sum += strength;
+        if (strength >= 600U) {
+            s_line_bits |= mask;
+        } else if (strength <= 400U) {
+            s_line_bits &= (uint8_t)~mask;
+        }
+    }
+    frame->raw_bits = s_line_bits;
+    frame->confidence = (uint16_t)(confidence_sum /
+        H2026_Q2_LINE_SENSOR_COUNT);
+    frame->valid = true;
+    return true;
+}
+
+static uint32_t absolute_i32(int32_t value)
+{
+    return (value < 0) ? (uint32_t)(-(value + 1)) + 1U : (uint32_t)value;
+}
+
+static void line_calibration_begin(void)
+{
+    memset(s_white_adc_sum, 0, sizeof(s_white_adc_sum));
+    memset(s_black_adc_candidate, 0, sizeof(s_black_adc_candidate));
+    memset(s_black_adc_delta, 0, sizeof(s_black_adc_delta));
+    s_line_calibration_ticks = 0U;
+    s_line_calibration_state = APP_CAL_WHITE;
+    s_line_calibration_failure = APP_CAL_FAIL_NONE;
+    h2026_bsp_motor_arm(false);
+}
+
+static bool line_calibration_service(void)
+{
+    h2026_q2_line_calibration_t calibration;
+    uint8_t index;
+
+    if ((s_line_calibration_state == APP_CAL_COMPLETE) ||
+        (s_line_calibration_state == APP_CAL_FAILED)) {
+        /*
+         * BLS/PA18 is unavailable on this chassis. Keep the terminal result
+         * visible instead of clearing it one tick later; a deliberate retry
+         * is initiated by a new firmware download during commissioning.
+         */
+        return false;
+    }
+    if ((s_line_calibration_state == APP_CAL_IDLE) &&
+        (s_output.state == H2026_Q2_STATE_IDLE)) {
+        /*
+         * PA18/BLS is physically unavailable on this chassis.  If no valid
+         * calibration was restored, automatically collect one after a
+         * fifteen-second white-background positioning window.  A valid saved
+         * calibration suppresses this path on later boots.
+         */
+        if (!s_auto_calibration_checked) {
+            if (h2026_q2_app_line_calibration_get(&calibration)) {
+                s_auto_calibration_checked = true;
+            } else if (++s_auto_calibration_delay_ticks >=
+                       CALIBRATION_AUTO_BOOT_DELAY_TICKS) {
+                s_auto_calibration_checked = true;
+                line_calibration_begin();
+            }
+        } else if (s_button.stable_pressed &&
+                   (s_button.held_ticks >= CALIBRATION_ENTER_HOLD_TICKS)) {
+            line_calibration_begin();
+        }
+    }
+    if (s_line_calibration_state == APP_CAL_IDLE) {
+        return false;
+    }
+
+    h2026_bsp_motor_arm(false);
+    if (!s_line_adc.valid) {
+        s_line_calibration_state = APP_CAL_FAILED;
+        s_line_calibration_failure = APP_CAL_FAIL_ADC_FRAME;
+        return true;
+    }
+    if (s_line_calibration_state == APP_CAL_WHITE) {
+        for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+            s_white_adc_sum[index] += s_line_adc.raw_adc[index];
+        }
+        ++s_line_calibration_ticks;
+        if (s_line_calibration_ticks >= CALIBRATION_WHITE_TICKS) {
+            for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+                s_black_adc_candidate[index] = (uint16_t)(
+                    (s_white_adc_sum[index] +
+                     (CALIBRATION_WHITE_TICKS / 2U)) /
+                    CALIBRATION_WHITE_TICKS);
+            }
+            s_line_calibration_ticks = 0U;
+            s_line_calibration_state = APP_CAL_BLACK_SWEEP;
+        }
+        return true;
+    }
+    if (s_line_calibration_state == APP_CAL_BLACK_SWEEP) {
+        for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+            const uint16_t white_reference = (uint16_t)(
+                (s_white_adc_sum[index] +
+                 (CALIBRATION_WHITE_TICKS / 2U)) /
+                CALIBRATION_WHITE_TICKS);
+            const uint32_t delta = absolute_i32(
+                (int32_t)s_line_adc.raw_adc[index] -
+                (int32_t)white_reference);
+            if (delta > s_black_adc_delta[index]) {
+                s_black_adc_delta[index] = delta;
+                s_black_adc_candidate[index] = s_line_adc.raw_adc[index];
+            }
+        }
+        ++s_line_calibration_ticks;
+        if (s_line_calibration_ticks < CALIBRATION_BLACK_TICKS) {
+            return true;
+        }
+
+        memset(&calibration, 0, sizeof(calibration));
+        for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+            calibration.white_adc[index] = (uint16_t)(
+                (s_white_adc_sum[index] +
+                 (CALIBRATION_WHITE_TICKS / 2U)) /
+                CALIBRATION_WHITE_TICKS);
+            calibration.black_adc[index] = s_black_adc_candidate[index];
+            calibration.sensor_x_mm[index] = s_config.sensor_x_mm[index];
+        }
+        calibration.version = 1U;
+        calibration.crc16 = h2026_q2_line_calibration_crc16(&calibration);
+        if (h2026_q2_app_line_calibration_set(&calibration)) {
+            s_line_bits = 0U;
+            s_calibration_locks = h2026_q2_app_calibration_locks();
+            s_line_calibration_state = APP_CAL_COMPLETE;
+        } else {
+            s_line_calibration_state = APP_CAL_FAILED;
+            s_line_calibration_failure = (app_calibration_failure_t)(
+                APP_CAL_FAIL_FLASH_STORE +
+                h2026_q2_app_line_calibration_store_error());
+        }
+    }
+    return true;
 }
 
 static bool button_update(bool raw_level,
@@ -149,15 +364,14 @@ static void update_marker_ready(void)
 {
     h2026_q2_line_observation_t observation;
 
-    if (!s_controller_ready || !s_input.line_i2c_valid) {
+    if (!s_controller_ready || !s_input.line_frame.valid) {
         s_marker_ready_ticks = 0U;
         return;
     }
-    h2026_q2_line_decode(s_input.line_raw_reg5,
-                         s_config.sensor_active_high,
-                         s_config.sensor_bit0_is_left,
-                         s_config.wide_min_active,
-                         &observation);
+    h2026_q2_line_decode_frame(&s_input.line_frame,
+                               s_config.sensor_x_mm,
+                               s_config.wide_min_active,
+                               &observation);
     if ((observation.active_count >=
          s_config.marker_capture_min_active) &&
         (observation.active_count < 8U) &&
@@ -441,16 +655,30 @@ static void telemetry_prepare(void)
     telemetry_append_u32(s_output.elapsed_ms);
     telemetry_append_text(",dmm=");
     telemetry_append_i32(scaled_i32(s_output.distance_m, 1000.0f));
-    telemetry_append_text(",raw=");
-    telemetry_append_hex8(s_line_raw);
-    telemetry_append_text(",uart_ok=");
-    telemetry_append_u32(s_input.line_i2c_valid ? 1U : 0U);
-    telemetry_append_text(",ur=");
-    telemetry_append_u32(diagnostics.line_uart_requests);
+    telemetry_append_text(",bits=");
+    telemetry_append_hex8(s_input.line_frame.raw_bits);
+    telemetry_append_text(",line_ok=");
+    telemetry_append_u32(s_input.line_frame.valid ? 1U : 0U);
+    telemetry_append_text(",scan_us=");
+    telemetry_append_u32(s_input.line_frame.scan_us);
+    telemetry_append_text(",scan=");
+    telemetry_append_u32(diagnostics.line_scan_count);
     telemetry_append_text("/");
-    telemetry_append_u32(diagnostics.line_uart_responses);
+    telemetry_append_u32(diagnostics.line_scan_failures);
     telemetry_append_text("/");
-    telemetry_append_u32(diagnostics.line_uart_timeouts);
+    telemetry_append_u32(diagnostics.line_scan_max_us);
+    telemetry_append_text(",adc=");
+    for (uint8_t index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        telemetry_append_u32(s_input.line_frame.raw_adc[index]);
+        telemetry_append_character(index + 1U == H2026_Q2_LINE_SENSOR_COUNT ?
+                                   ';' : ':');
+    }
+    telemetry_append_text(",str=");
+    for (uint8_t index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        telemetry_append_u32(s_input.line_frame.strength[index]);
+        telemetry_append_character(index + 1U == H2026_Q2_LINE_SENSOR_COUNT ?
+                                   ';' : ':');
+    }
     telemetry_append_text(",e=");
     telemetry_append_i32(
         scaled_i32(s_output.diagnostics.filtered_line_error, 1000.0f));
@@ -515,9 +743,12 @@ static void display_service(void)
 
     if (!s_display_job_active) {
         h2026_q2_display_render(&s_output,
-                                s_line_raw,
-                                s_input.line_i2c_valid,
+                                s_input.line_frame.raw_bits,
+                                s_input.line_frame.valid,
                                 s_calibration_locks,
+                                (uint8_t)s_line_calibration_state,
+                                (uint8_t)s_line_calibration_failure,
+                                s_line_adc.raw_adc,
                                 (uint32_t)s_app_fault);
         s_display_job_active = true;
     }
@@ -533,12 +764,11 @@ static void run_control_tick(uint32_t overrun_count)
     h2026_bsp_encoder_snapshot_t encoders;
     bool press_event;
     bool estop_event;
+    bool calibration_active;
 
     ++s_foreground_ticks;
-    s_input.line_i2c_valid = h2026_bsp_line_uart_read_state(&s_line_raw);
-    if (s_input.line_i2c_valid) {
-        s_input.line_raw_reg5 = s_line_raw;
-    }
+    (void)h2026_bsp_line_scan(&s_line_adc);
+    (void)line_frame_from_adc(&s_line_adc, &s_input.line_frame);
     h2026_bsp_encoder_snapshot(&encoders);
     s_input.encoder_left_count = encoders.left_count;
     s_input.encoder_right_count = encoders.right_count;
@@ -546,6 +776,16 @@ static void run_control_tick(uint32_t overrun_count)
     (void)button_update(h2026_bsp_start_level(),
                         &press_event,
                         &estop_event);
+    calibration_active = line_calibration_service();
+    if (calibration_active) {
+        h2026_bsp_motor_arm(false);
+        update_led();
+        if ((s_foreground_ticks % TELEMETRY_PERIOD_TICKS) == 0U) {
+            telemetry_prepare();
+        }
+        telemetry_service();
+        return;
+    }
     update_marker_ready();
 
     if (overrun_count != s_last_overrun_count) {
@@ -562,8 +802,8 @@ static void run_control_tick(uint32_t overrun_count)
             app_fault_is_recoverable(s_app_fault)) {
             reset_for_retry();
         } else if ((s_output.state == H2026_Q2_STATE_IDLE) &&
-                   (s_marker_ready_ticks >= MARKER_READY_TICKS) &&
                    (s_app_fault == APP_FAULT_NONE)) {
+            /* Core validates an ordinary usable line in odometry-only mode. */
             s_input.start_event = true;
         }
     }
@@ -602,9 +842,9 @@ int main(void)
     (void)h2026_bsp_take_control_tick(&overrun_count);
     s_last_overrun_count = overrun_count;
 
-    s_line_raw = 0U;
-    s_input.line_i2c_valid = h2026_bsp_line_uart_read_state(&s_line_raw);
-    s_input.line_raw_reg5 = s_line_raw;
+    s_line_bits = 0U;
+    (void)h2026_bsp_line_scan(&s_line_adc);
+    (void)line_frame_from_adc(&s_line_adc, &s_input.line_frame);
     h2026_bsp_encoder_snapshot(&encoders);
     s_input.encoder_left_count = encoders.left_count;
     s_input.encoder_right_count = encoders.right_count;
@@ -627,12 +867,21 @@ int main(void)
         s_controller_ready = false;
         s_app_fault = APP_FAULT_CORE_CONFIG;
     }
-
     h2026_q2_display_render(&s_output,
-                            s_line_raw,
-                            s_input.line_i2c_valid,
+                            s_input.line_frame.raw_bits,
+                            s_input.line_frame.valid,
                             s_calibration_locks,
+                            (uint8_t)s_line_calibration_state,
+                            (uint8_t)s_line_calibration_failure,
+                            s_line_adc.raw_adc,
                             (uint32_t)s_app_fault);
+    /*
+     * Show the first normal status page before entering the scheduler. This
+     * one-time boot transfer cannot affect a running control period; later
+     * frames remain one-page-per-tick foreground work.
+     */
+    while (!h2026_q2_display_flush_one_page()) {
+    }
 
     for (;;) {
         if (h2026_bsp_take_control_tick(&overrun_count)) {

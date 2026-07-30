@@ -20,16 +20,19 @@ When hardware changes, update this file, `硬件及接线清单.md`, the root
 - Real-time controller: WHEELTEC C07A / TI MSPM0G3507 installed on the
   S27F/S28A modular base. The exact base-board silk is still to be recorded.
 - Installed controller modules: P03B 12 V to 5 V regulator, MPU6050 on H5,
-  four-wire OLED, BLS start button, status LED and D103A/TB6612 motor module.
+  BLS start button, status LED and D103A/TB6612 motor module. The failed
+  four-wire OLED is replaced by an external four-pin I2C OLED.
 - Modules supplied with the controller but removed for the current build: the
   onboard Bluetooth module.  The separately supplied D157B/AT8236 is not in
   the chassis drive path.
 - Chassis drive: integrated D103A/TB6612 driving two MG513XP28 12 V encoder
   motors on a 32 cm by 24 cm three-wheel differential chassis.
-- Main line sensor: HiWonder LineFollower_8CH v1.0, eight infrared probes,
-  5 V/85 mA.  The current live-hardware route uses its native 115200 UART
-  state protocol; the 0x5D I2C route remains a disconnected fallback only.
-- Rule fallback line sensor: LF04 four-channel infrared module on U3.
+- Main line sensor: CD4051 eight-channel gray module, 5 V supply, scanned as
+  analog OUT through MSPM0 ADC1/A1_4. Its U3 harness is AD2=PA12, AD1=PA27,
+  AD0=PB16 and OUT=PB17. The removed HiWonder UART/I2C module is not a
+  fallback in this build.
+- Rule fallback line sensor: LF04 four-channel infrared module, electrically
+  incompatible with the occupied U3 gray-sensor harness.
 - Beam drive: D36A plus a 42-size stepper and MS42CG A/B/PWM encoder.
 - Vision and video: 01Studio CanMV K230 standard board, planned 1 GB version,
   with the bundled GC2093 70-degree 24-pin camera. The K230 is planned, not
@@ -44,15 +47,16 @@ When hardware changes, update this file, `硬件及接线清单.md`, the root
 | Right chassis motor | PB2/TIMA1_CCP0 + PA14/PA13 | TB6612 A channel; firmware positive is remapped toward physical forward |
 | Left wheel encoder A/B | PA25/PA26 | GPIO quadrature; physical-forward sign = -1 |
 | Right wheel encoder A/B | PB20/PB24 | GPIO quadrature; physical-forward sign = +1 |
-| MPU6050 I2C0 SDA/SCL | PA0/PA1 | H5 original module only |
-| HiWonder 8CH UART | PB6 TX/PB7 RX, UART1 | H8 pins 2/3; sensor RX/TX, 115200 |
+| I2C0 SDA/SCL | PA0/PA1 | MPU6050 (0x68) plus external OLED (0x3C) |
+| Gray 8CH mux select | PA12/PA27/PB16 | CD4051 AD2/AD1/AD0 |
+| Gray 8CH analog OUT | PB17 / ADC1_A1_4 | CD4051 OUT; 0..VDD only |
 | MPU6050 interrupt | PA7 | H5 pin 8 |
-| LF04 O1/O2/O3/O4 | PA27/PA12/PB16/PB17 | U3 pins 6/5/4/3 |
-| OLED SCL/SDA/RST/DC | PA28/PA31/PB14/PB15 | Installed OLED |
+| LF04 O1/O2/O3/O4 | unavailable | U3 is occupied by the gray 8CH harness |
+| External OLED SDA/SCL | PA0/PA1, I2C0 | 4-pin SSD1306-compatible OLED, default 0x3C; VCC=3.3 V |
 | Start button / status LED | PA18/PB9 | BLS / LED |
 | Control tick | TIMG7 | No external pin |
 | Debug UART | PA10 TX / PA11 RX, UART0 | 115200; separate from the line sensor |
-| K230 state receive | PB7 / UART1_RX | Planned route; unavailable while the HiWonder UART uses H8 |
+| K230 state receive | PB7 / UART1_RX | Planned route; PB6/PB7 are released but not allocated by Q2 |
 | D36A STEP | Unassigned in current build | TB6612 owns TIMA1 for PB2/PB3 |
 | D36A DIR / EN | Unassigned in current build | TB6612 owns PA13; D36A is disconnected |
 | MS42CG incremental A/B | PB18/PB19 | C07A V1.1 pads, software quadrature |
@@ -67,22 +71,22 @@ S27F/S28A revisions are confirmed.
 ## Connector and protocol facts
 
 - H5: pin 1=5 V, pin 2=GND, pin 3=PA1/SCL, pin 4=PA0/SDA,
-  pin 8=PA7/MPU6050 INT. It remains exclusively with the installed MPU6050.
-- Q2 HiWonder connector (current UART trial): H8 pin 5=5 V, pin 4=GND,
-  pin 2=PB6/UART1_TX to sensor RX, pin 3=PB7/UART1_RX from sensor TX.  The
-  removable Bluetooth module and K230 must remain disconnected; disconnect
-  the U3 SDA/SCL harness.  Firmware selects manual mode with byte 0 then
-  sends byte 1 and receives the one-byte S1..S8 state at 115200 8N1.
-  Earlier H8 continuity tests were negative, so this route remains pending an
-  end-to-end UART response count before it is accepted as electrically valid.
-- HiWonder sensor connector: the separate I2C header is unplugged for the
-  current trial.  The old 0x5D register protocol remains documented only as
-  a fallback; no control-loop transaction may use it while UART is selected.
-- `linefollower_8ch.state_valid` is mandatory for motion. A failed state read
-  invalidates the line sample; analog or threshold diagnostic reads must not
-  restore it.
-- LF04 follows the WHEELTEC example, not U3 pin-number order:
-  O1/O2/O3/O4=PA27/PA12/PB16/PB17.
+  pin 8=PA7/MPU6050 INT. I2C0 is shared electrically by the installed
+  MPU6050 (0x68) and the external OLED (0x3C), but the OLED must draw VCC
+  from a **3.3 V** point rather than H5 pin 1 (5 V). Connect its `SCL` to
+  PA1 and `SDA` to PA0, with a common GND.
+- CD4051 gray sensor: supply 5 V/GND, then wire AD2=PA12, AD1=PA27,
+  AD0=PB16 and OUT=PB17/ADC1_A1_4. The installed module was measured at
+  about ADC 170 on white and ADC 4095 on black; it is therefore an analog,
+  high-on-black source. R0..R7 are physical left-to-right when the vehicle
+  faces forward. Keep the OUT voltage within 0..VDD and use a divider if a
+  future module exceeds that range. If a 5 V mux does not guarantee 3.3 V
+  VIH, buffer AD0..AD2 with 74AHCT125.
+- One complete 000..111 scan is mandatory for motion. Switch settle time,
+  ADC validity, scan budget and per-channel white/black calibration are all
+  safety gates; all-white and all-black are valid optical patterns, not a bus
+  failure.
+- LF04 cannot be connected while this harness occupies U3.
 - K230 to MSPM0 is a later, one-way route:
   K230 GPIO11/TX2 -> PB7/UART1_RX plus common GND. GPIO12/RX2 and the K230
   3V3 pin are not connected. It is a later hardware route and remains
@@ -93,15 +97,15 @@ S27F/S28A revisions are confirmed.
 
 ## Mandatory conflict rules
 
-- Keep MPU6050 on PA0/PA1/PA7. Do not copy the D36A vendor example that uses
-  PA0/PA1 for QEI.
+- Keep MPU6050 and the external OLED on PA0/PA1, with unique I2C addresses;
+  do not copy the D36A vendor example that uses PA0/PA1 for QEI.
 - D103A/TB6612 remains installed for chassis drive.  Its PA13/PA14 direction
   pins conflict with the current D36A/MS42CG plan, so D36A must remain
   disconnected until its direction and absolute-angle pins are reassigned.
-- Onboard Bluetooth must be physically disconnected before Q2 HiWonder or
-  K230 uses H8 PB6/PB7.
-- PB16/PB17 are disconnected from the HiWonder while UART is selected;
-  moving back to its I2C fallback or to LF04 is a separate hardware reroute.
+- Onboard Bluetooth remains physically disconnected. PB6/PB7 are released by
+  the gray conversion, but K230 remains a separate later hardware route.
+- PB16/PB17 are dedicated to CD4051 AD0/OUT; moving back to LF04 is a separate
+  hardware reroute.
 - The CCD connector must remain empty because PA22 is D36A EN.
 - MS42CG uses 3.3 V only. Never power it from 5 V.
 - Motor and stepper return currents must not flow through C07A or K230 signal
@@ -114,8 +118,11 @@ S27F/S28A revisions are confirmed.
 - MS42CG direction, counts per revolution, PWM period and absolute-angle
   alignment.
 - MG513XP28 encoder CPR, reduction ratio, phase order and stall current.
-- HiWonder H8 PB6/PB7 UART end-to-end response is pending: confirm that the
-  response counter rises and each physical S1..S8 occlusion changes its bit.
+- CD4051 address-input 3.3 V logic margin, 1000-frame settle-time comparison
+  and OUT voltage margin still need instrumented verification. The black/white
+  response, physical R0..R7 order and centre coordinates have been measured:
+  R0..R7 = -35,-25,-15,-5,+5,+15,+25,+35 mm; white is 171..174 ADC and black
+  is 4095 ADC. The archived calibration CRC is 0x74D9.
 - P03B load, ripple and temperature margin with the controller and K230.
 - Battery capacity/C rating, fuse value and wire gauge from measured peaks.
 - K230 memory, power, UART, camera and simultaneous H.264/RTSP two-hour test.

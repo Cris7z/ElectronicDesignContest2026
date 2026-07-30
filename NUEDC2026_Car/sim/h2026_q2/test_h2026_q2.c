@@ -48,9 +48,10 @@ static h2026_q2_config_t test_config(void)
     h2026_q2_config_t config;
 
     memset(&config, 0, sizeof(config));
-    config.sensor_active_high = true;
-    config.sensor_bit0_is_left = true;
     config.wide_min_active = 5U;
+    for (uint8_t index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        config.sensor_x_mm[index] = ((float)index * 10.0f) - 35.0f;
+    }
     config.marker_capture_min_active = 5U;
     config.marker_detect_min_active = 3U;
     config.marker_count_tolerance = 1U;
@@ -59,14 +60,19 @@ static h2026_q2_config_t test_config(void)
     config.marker_release_ms = 20U;
     config.marker_confirm_ms = 15U;
     config.start_clear_distance_m = 0.010f;
+    config.start_acquire_timeout_ms = 100U;
+    config.start_acquire_speed_mps = 0.05f;
+    config.use_start_finish_marker = true;
     config.finish_gate_distance_m = 5.900f;
     config.finish_gate_time_ms = 1000U;
+    config.distance_finish_approach_m = 0.10f;
+    config.zero_offset_approach_speed_mps = 0.05f;
     config.stop_distance_from_marker_m = 0.200f;
     config.stop_position_tolerance_m = 0.0015f;
     config.stop_speed_tolerance_mps = 0.025f;
     config.stop_hold_ms = 20U;
-    config.i2c_grace_ms = 10U;
-    config.i2c_fault_ms = 30U;
+    config.line_sensor_grace_ms = 10U;
+    config.line_sensor_fault_ms = 30U;
     config.line_grace_ms = 10U;
     config.line_fault_ms = 40U;
     config.mission_timeout_ms = 30000U;
@@ -79,7 +85,7 @@ static h2026_q2_config_t test_config(void)
     config.track_width_m = 0.24f;
     config.cruise_speed_mps = 0.50f;
     config.minimum_tracking_speed_mps = 0.20f;
-    config.degraded_i2c_speed_mps = 0.10f;
+    config.degraded_sensor_speed_mps = 0.10f;
     config.degraded_line_speed_mps = 0.08f;
     config.maximum_wheel_speed_mps = 1.20f;
     config.acceleration_limit_mps2 = 2.0f;
@@ -123,8 +129,8 @@ static bool fixture_init(fixture_t *fixture,
                          uint8_t initial_raw)
 {
     memset(fixture, 0, sizeof(*fixture));
-    fixture->input.line_raw_reg5 = initial_raw;
-    fixture->input.line_i2c_valid = true;
+    fixture->input.line_frame.raw_bits = initial_raw;
+    fixture->input.line_frame.valid = true;
     return h2026_q2_init(&fixture->controller,
                          config,
                          &fixture->input);
@@ -132,14 +138,14 @@ static bool fixture_init(fixture_t *fixture,
 
 static void fixture_step(fixture_t *fixture,
                          uint8_t raw,
-                         bool i2c_valid,
+                         bool line_valid,
                          int64_t left_delta,
                          int64_t right_delta,
                          bool start,
                          bool estop)
 {
-    fixture->input.line_raw_reg5 = raw;
-    fixture->input.line_i2c_valid = i2c_valid;
+    fixture->input.line_frame.raw_bits = raw;
+    fixture->input.line_frame.valid = line_valid;
     fixture->input.encoder_left_count += left_delta;
     fixture->input.encoder_right_count += right_delta;
     fixture->input.start_event = start;
@@ -290,6 +296,60 @@ static bool test_all_256_line_patterns(void)
     return true;
 }
 
+static bool test_gray_calibration_crc_and_span(void)
+{
+    h2026_q2_line_calibration_t calibration;
+
+    memset(&calibration, 0, sizeof(calibration));
+    for (uint8_t index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        calibration.white_adc[index] = 400U;
+        calibration.black_adc[index] = 2600U;
+        calibration.sensor_x_mm[index] = ((float)index * 10.0f) - 35.0f;
+    }
+    calibration.version = 1U;
+    calibration.crc16 = h2026_q2_line_calibration_crc16(&calibration);
+    CHECK(h2026_q2_line_calibration_valid(&calibration));
+    ++calibration.black_adc[3];
+    CHECK(!h2026_q2_line_calibration_valid(&calibration));
+    --calibration.black_adc[3];
+    calibration.crc16 = h2026_q2_line_calibration_crc16(&calibration);
+    calibration.black_adc[5] = calibration.white_adc[5] + 409U;
+    calibration.crc16 = h2026_q2_line_calibration_crc16(&calibration);
+    CHECK(!h2026_q2_line_calibration_valid(&calibration));
+    return true;
+}
+
+static bool test_gray_frame_weighted_centroid_and_binary_fallback(void)
+{
+    h2026_q2_config_t config = test_config();
+    h2026_q2_line_sensor_frame_t frame;
+    h2026_q2_line_observation_t observation;
+
+    memset(&frame, 0, sizeof(frame));
+    frame.valid = true;
+    frame.raw_bits = 0x18U;
+    frame.strength[3] = 200U;
+    frame.strength[4] = 800U;
+    h2026_q2_line_decode_frame(&frame, config.sensor_x_mm,
+                               config.wide_min_active, &observation);
+    CHECK(observation.classification == H2026_Q2_LINE_NORMAL);
+    CHECK(observation.centroid_valid);
+    CHECK_NEAR(observation.centroid, 0.08571429f, 0.00001f);
+
+    frame.strength[3] = 0U;
+    frame.strength[4] = 0U;
+    h2026_q2_line_decode_frame(&frame, config.sensor_x_mm,
+                               config.wide_min_active, &observation);
+    CHECK_NEAR(observation.centroid, 0.0f, 0.00001f);
+
+    frame.raw_bits = 0x24U;
+    h2026_q2_line_decode_frame(&frame, config.sensor_x_mm,
+                               config.wide_min_active, &observation);
+    CHECK(observation.classification == H2026_Q2_LINE_MULTI);
+    CHECK(!observation.centroid_valid);
+    return true;
+}
+
 static bool test_config_requires_measured_values(void)
 {
     h2026_q2_config_t config = test_config();
@@ -297,7 +357,7 @@ static bool test_config_requires_measured_values(void)
     h2026_q2_input_t input;
 
     memset(&input, 0, sizeof(input));
-    input.line_i2c_valid = true;
+    input.line_frame.valid = true;
     CHECK(h2026_q2_config_validate(&config));
 
     config.left_meters_per_encoder_count = 0.0f;
@@ -306,6 +366,10 @@ static bool test_config_requires_measured_values(void)
     CHECK(controller.state == H2026_Q2_STATE_FAULT);
     CHECK(controller.fault == H2026_Q2_FAULT_CONFIG);
     CHECK(controller.brake);
+
+    config = test_config();
+    config.stop_distance_from_marker_m = 0.0f;
+    CHECK(h2026_q2_config_validate(&config));
 
     config = test_config();
     config.left_encoder_sign = 0;
@@ -333,17 +397,24 @@ static bool test_start_release_and_finish_gates(void)
 
     CHECK(fixture_init(&fixture, &config, 0x18U));
 
+    /* A normal track line may be 10 cm before the physical start marker. */
     fixture_step(&fixture, 0x18U, true, 0, 0, true, false);
-    CHECK(fixture.output.state == H2026_Q2_STATE_IDLE);
-    CHECK(fixture.output.diagnostics.rejected_start_count == 1U);
+    CHECK(fixture.output.state == H2026_Q2_STATE_SEEK_START_MARKER);
+    CHECK(!fixture.output.brake);
+    fixture_step(&fixture, 0x3EU, true, 10, 10, false, false);
+    CHECK(fixture.output.state == H2026_Q2_STATE_CLEAR_START);
+    CHECK(fixture.output.diagnostics.marker_reference_bits == 0x3EU);
+
+    /* Invalid start pictures remain rejected from a fresh idle state. */
+    CHECK(fixture_init(&fixture, &config, 0x18U));
 
     fixture_step(&fixture, 0xF8U, true, 0, 0, true, false);
     CHECK(fixture.output.state == H2026_Q2_STATE_IDLE);
-    CHECK(fixture.output.diagnostics.rejected_start_count == 2U);
+    CHECK(fixture.output.diagnostics.rejected_start_count == 1U);
 
     fixture_step(&fixture, 0xFFU, true, 0, 0, true, false);
     CHECK(fixture.output.state == H2026_Q2_STATE_IDLE);
-    CHECK(fixture.output.diagnostics.rejected_start_count == 3U);
+    CHECK(fixture.output.diagnostics.rejected_start_count == 2U);
 
     fixture_step(&fixture, 0x3EU, true, 0, 0, true, false);
     CHECK(fixture.output.state == H2026_Q2_STATE_CLEAR_START);
@@ -396,6 +467,37 @@ static bool test_start_release_and_finish_gates(void)
         CHECK((fixture.output.diagnostics.flags &
                H2026_Q2_DIAG_FINISH_GATE_OPEN) == 0U);
     }
+    return true;
+}
+
+static bool test_odometry_only_start_and_finish(void)
+{
+    h2026_q2_config_t config = test_config();
+    fixture_t fixture;
+
+    config.use_start_finish_marker = false;
+    config.finish_gate_distance_m = 0.030f;
+    config.finish_gate_time_ms = 5U;
+    config.distance_finish_approach_m = 0.010f;
+    CHECK(fixture_init(&fixture, &config, 0x18U));
+
+    /* Wheel centre is on the start datum; a normal line starts immediately. */
+    fixture_step(&fixture, 0x18U, true, 0, 0, true, false);
+    CHECK(fixture.output.state == H2026_Q2_STATE_START_ACQUIRE_LINE);
+    CHECK(!fixture.output.brake);
+    CHECK((fixture.output.diagnostics.flags &
+           H2026_Q2_DIAG_MARKER_CAPTURED) == 0U);
+
+    fixture_step(&fixture, 0x18U, true, 0, 0, false, false);
+    CHECK(fixture.output.state == H2026_Q2_STATE_LAP);
+
+    fixture_step(&fixture, 0x18U, true, 100, 100, false, false);
+    CHECK(fixture.output.state == H2026_Q2_STATE_LAP);
+    fixture_step(&fixture, 0x18U, true, 100, 100, false, false);
+    CHECK(fixture.output.state == H2026_Q2_STATE_LAP);
+    fixture_step(&fixture, 0x18U, true, 100, 100, false, false);
+    CHECK(fixture.output.state == H2026_Q2_STATE_STOPPING);
+    CHECK_NEAR(fixture.controller.stop_target_m, 0.030f, 0.000001f);
     return true;
 }
 
@@ -526,7 +628,7 @@ static bool test_full_6_1416m_lap_and_distance_stop(void)
     return true;
 }
 
-static bool test_i2c_timeout_and_degraded_cap(void)
+static bool test_line_sensor_timeout_and_degraded_cap(void)
 {
     h2026_q2_config_t config = test_config();
     fixture_t fixture;
@@ -537,20 +639,20 @@ static bool test_i2c_timeout_and_degraded_cap(void)
     CHECK(start_and_clear(&fixture, 0x3EU));
     previous_speed = fixture.output.center_speed_command_mps;
     for (tick = 1U;
-         tick <= config.i2c_fault_ms / H2026_Q2_TICK_MS;
+         tick <= config.line_sensor_fault_ms / H2026_Q2_TICK_MS;
          ++tick) {
         fixture_step(&fixture, 0xFFU, false, 25, 25, false, false);
-        if ((tick * H2026_Q2_TICK_MS) > config.i2c_grace_ms &&
+        if ((tick * H2026_Q2_TICK_MS) > config.line_sensor_grace_ms &&
             fixture.output.state != H2026_Q2_STATE_FAULT) {
             CHECK((fixture.output.diagnostics.flags &
-                   H2026_Q2_DIAG_I2C_DEGRADED) != 0U);
+                   H2026_Q2_DIAG_LINE_SENSOR_DEGRADED) != 0U);
             CHECK(fixture.output.center_speed_command_mps <=
                   previous_speed + 0.000001f);
         }
         previous_speed = fixture.output.center_speed_command_mps;
     }
     CHECK(fixture.output.state == H2026_Q2_STATE_FAULT);
-    CHECK(fixture.output.fault == H2026_Q2_FAULT_I2C_TIMEOUT);
+    CHECK(fixture.output.fault == H2026_Q2_FAULT_LINE_SENSOR_TIMEOUT);
     CHECK(!fixture.output.brake);
     CHECK((fixture.output.diagnostics.flags &
            H2026_Q2_DIAG_FAULT_COASTING) != 0U);
@@ -770,7 +872,7 @@ static bool test_fault_coast_has_hard_deadline(void)
     CHECK(fixture_init(&fixture, &config, 0x18U));
     CHECK(start_and_clear(&fixture, 0x3EU));
     for (tick = 0U;
-         tick < config.i2c_fault_ms / H2026_Q2_TICK_MS;
+         tick < config.line_sensor_fault_ms / H2026_Q2_TICK_MS;
          ++tick) {
         fixture_step(&fixture, 0xFFU, false, 25, 25, false, false);
     }
@@ -948,16 +1050,21 @@ int main(void)
 {
     const test_case_t tests[] = {
         {"all 256 line patterns", test_all_256_line_patterns},
+        {"gray calibration CRC and span", test_gray_calibration_crc_and_span},
+        {"gray weighted centroid and binary fallback",
+         test_gray_frame_weighted_centroid_and_binary_fallback},
         {"config requires measured values",
          test_config_requires_measured_values},
         {"start release and finish gates",
          test_start_release_and_finish_gates},
+        {"odometry-only start and finish",
+         test_odometry_only_start_and_finish},
         {"open gate rejects bad marker shapes",
          test_open_gate_rejects_bad_marker_shapes},
         {"full 6.1416 m lap and distance stop",
          test_full_6_1416m_lap_and_distance_stop},
-        {"I2C timeout and degraded cap",
-         test_i2c_timeout_and_degraded_cap},
+        {"line-sensor timeout and degraded cap",
+          test_line_sensor_timeout_and_degraded_cap},
         {"invalid and non-normal do not feed PD",
          test_invalid_and_non_normal_never_feed_pd},
         {"line loss recovery and timeout",

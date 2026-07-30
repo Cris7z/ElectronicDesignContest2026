@@ -75,14 +75,22 @@ bool h2026_q2_config_validate(const h2026_q2_config_t *config)
         (config->marker_center_limit_normalized > 1.0f)) {
         return false;
     }
+    for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        if (!isfinite(config->sensor_x_mm[index]) ||
+            ((index > 0U) &&
+             !(config->sensor_x_mm[index] > config->sensor_x_mm[index - 1U]))) {
+            return false;
+        }
+    }
     if ((config->marker_release_ms == 0U) ||
         (config->marker_confirm_ms == 0U) ||
         (config->stop_hold_ms == 0U) ||
         !is_tick_multiple(config->marker_release_ms) ||
         !is_tick_multiple(config->marker_confirm_ms) ||
+        !is_tick_multiple(config->start_acquire_timeout_ms) ||
         !is_tick_multiple(config->stop_hold_ms) ||
-        !is_tick_multiple(config->i2c_grace_ms) ||
-        !is_tick_multiple(config->i2c_fault_ms) ||
+        !is_tick_multiple(config->line_sensor_grace_ms) ||
+        !is_tick_multiple(config->line_sensor_fault_ms) ||
         !is_tick_multiple(config->line_grace_ms) ||
         !is_tick_multiple(config->line_fault_ms) ||
         !is_tick_multiple(config->finish_gate_time_ms) ||
@@ -90,21 +98,27 @@ bool h2026_q2_config_validate(const h2026_q2_config_t *config)
         !is_tick_multiple(config->stopping_timeout_ms) ||
         !is_tick_multiple(config->fault_coast_max_ms) ||
         (config->finish_gate_time_ms == 0U) ||
-        (config->i2c_fault_ms == 0U) ||
+        (config->start_acquire_timeout_ms == 0U) ||
+        (config->line_sensor_fault_ms == 0U) ||
         (config->line_fault_ms == 0U) ||
         (config->mission_timeout_ms == 0U) ||
         (config->stopping_timeout_ms == 0U) ||
         (config->fault_coast_max_ms == 0U) ||
-        (config->i2c_grace_ms >= config->i2c_fault_ms) ||
+        (config->line_sensor_grace_ms >= config->line_sensor_fault_ms) ||
         (config->line_grace_ms >= config->line_fault_ms) ||
         (config->finish_gate_time_ms >= config->mission_timeout_ms)) {
         return false;
     }
     if (!is_finite_nonnegative(config->start_clear_distance_m) ||
+        !is_finite_positive(config->start_acquire_speed_mps) ||
         !is_finite_positive(config->finish_gate_distance_m) ||
         (config->finish_gate_distance_m <=
          config->start_clear_distance_m) ||
-        !is_finite_positive(config->stop_distance_from_marker_m) ||
+        !is_finite_positive(config->distance_finish_approach_m) ||
+        (config->distance_finish_approach_m >=
+         config->finish_gate_distance_m) ||
+        !is_finite_nonnegative(config->stop_distance_from_marker_m) ||
+        !is_finite_positive(config->zero_offset_approach_speed_mps) ||
         !is_finite_positive(config->stop_position_tolerance_m) ||
         !is_finite_positive(config->stop_speed_tolerance_mps) ||
         !is_finite_positive(config->left_meters_per_encoder_count) ||
@@ -118,11 +132,13 @@ bool h2026_q2_config_validate(const h2026_q2_config_t *config)
     }
     if (!is_finite_positive(config->cruise_speed_mps) ||
         !is_finite_nonnegative(config->minimum_tracking_speed_mps) ||
-        !is_finite_nonnegative(config->degraded_i2c_speed_mps) ||
+        !is_finite_nonnegative(config->degraded_sensor_speed_mps) ||
         !is_finite_nonnegative(config->degraded_line_speed_mps) ||
         !is_finite_positive(config->maximum_wheel_speed_mps) ||
         (config->minimum_tracking_speed_mps > config->cruise_speed_mps) ||
-        (config->degraded_i2c_speed_mps > config->cruise_speed_mps) ||
+        (config->start_acquire_speed_mps > config->cruise_speed_mps) ||
+        (config->zero_offset_approach_speed_mps > config->cruise_speed_mps) ||
+        (config->degraded_sensor_speed_mps > config->cruise_speed_mps) ||
         (config->degraded_line_speed_mps > config->cruise_speed_mps) ||
         (config->maximum_wheel_speed_mps < config->cruise_speed_mps) ||
         !is_finite_positive(config->acceleration_limit_mps2) ||
@@ -251,9 +267,132 @@ void h2026_q2_line_decode(uint8_t raw_bits,
     }
 }
 
+static uint16_t crc16_update(uint16_t crc, uint8_t value)
+{
+    uint8_t bit;
+
+    crc ^= value;
+    for (bit = 0U; bit < 8U; ++bit) {
+        crc = (crc & 1U) ? (uint16_t)((crc >> 1U) ^ 0xA001U) :
+                           (uint16_t)(crc >> 1U);
+    }
+    return crc;
+}
+
+uint16_t h2026_q2_line_calibration_crc16(
+    const h2026_q2_line_calibration_t *calibration)
+{
+    uint16_t crc = 0xFFFFU;
+    size_t index;
+
+    if (calibration == NULL) {
+        return 0U;
+    }
+    for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        uint16_t values[2];
+        size_t value_index;
+
+        values[0] = calibration->white_adc[index];
+        values[1] = calibration->black_adc[index];
+
+        for (value_index = 0U; value_index < 2U; ++value_index) {
+            uint16_t value = values[value_index];
+            uint8_t byte_index;
+            for (byte_index = 0U; byte_index < 2U; ++byte_index) {
+                crc = crc16_update(crc, (uint8_t)(value & 0xFFU));
+                value >>= 8U;
+            }
+        }
+        {
+            uint32_t coordinate_bits;
+            uint8_t byte_index;
+
+            memcpy(&coordinate_bits, &calibration->sensor_x_mm[index],
+                   sizeof(coordinate_bits));
+            for (byte_index = 0U; byte_index < 4U; ++byte_index) {
+                crc = crc16_update(crc,
+                    (uint8_t)(coordinate_bits & 0xFFU));
+                coordinate_bits >>= 8U;
+            }
+        }
+    }
+    crc = crc16_update(crc, (uint8_t)(calibration->version & 0xFFU));
+    crc = crc16_update(crc, (uint8_t)(calibration->version >> 8U));
+    return crc;
+}
+
+bool h2026_q2_line_calibration_valid(
+    const h2026_q2_line_calibration_t *calibration)
+{
+    size_t index;
+
+    if ((calibration == NULL) || (calibration->version == 0U) ||
+        (calibration->crc16 != h2026_q2_line_calibration_crc16(calibration))) {
+        return false;
+    }
+    for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        const int span = (int)calibration->black_adc[index] -
+                         (int)calibration->white_adc[index];
+        if ((span > -410) && (span < 410)) {
+            return false;
+        }
+        if (!isfinite(calibration->sensor_x_mm[index])) {
+            return false;
+        }
+        if ((index > 0U) &&
+            !(calibration->sensor_x_mm[index] >
+              calibration->sensor_x_mm[index - 1U])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void h2026_q2_line_decode_frame(
+    const h2026_q2_line_sensor_frame_t *frame,
+    const float sensor_x_mm[H2026_Q2_LINE_SENSOR_COUNT],
+    uint8_t wide_min_active,
+    h2026_q2_line_observation_t *observation)
+{
+    float weighted_sum = 0.0f;
+    float strength_sum = 0.0f;
+    float left_x;
+    float right_x;
+    uint8_t index;
+
+    if ((frame == NULL) || (observation == NULL)) {
+        return;
+    }
+    h2026_q2_line_decode(frame->raw_bits, true, true, wide_min_active,
+                          observation);
+    if (!observation->centroid_valid || (sensor_x_mm == NULL)) {
+        return;
+    }
+    left_x = sensor_x_mm[0];
+    right_x = sensor_x_mm[H2026_Q2_LINE_SENSOR_COUNT - 1U];
+    if (!(right_x > left_x)) {
+        return;
+    }
+    for (index = 0U; index < H2026_Q2_LINE_SENSOR_COUNT; ++index) {
+        if ((frame->raw_bits & (uint8_t)(1U << index)) != 0U) {
+            const float weight = (float)frame->strength[index];
+            weighted_sum += sensor_x_mm[index] * weight;
+            strength_sum += weight;
+        }
+    }
+    if (strength_sum > 0.0f) {
+        const float center_x = weighted_sum / strength_sum;
+        observation->centroid = clampf(
+            (2.0f * (center_x - left_x) / (right_x - left_x)) - 1.0f,
+            -1.0f, 1.0f);
+    }
+}
+
 static bool state_is_running(h2026_q2_state_t state)
 {
-    return (state == H2026_Q2_STATE_CLEAR_START) ||
+    return (state == H2026_Q2_STATE_START_ACQUIRE_LINE) ||
+           (state == H2026_Q2_STATE_SEEK_START_MARKER) ||
+           (state == H2026_Q2_STATE_CLEAR_START) ||
            (state == H2026_Q2_STATE_LAP) ||
            (state == H2026_Q2_STATE_FINISH_ARMED) ||
            (state == H2026_Q2_STATE_STOPPING);
@@ -290,11 +429,10 @@ void h2026_q2_reset(h2026_q2_controller_t *controller,
             initial_input->encoder_left_count;
         controller->previous_right_count =
             initial_input->encoder_right_count;
-        h2026_q2_line_decode(initial_input->line_raw_reg5,
-                             saved_config.sensor_active_high,
-                             saved_config.sensor_bit0_is_left,
-                             saved_config.wide_min_active,
-                             &controller->line);
+        h2026_q2_line_decode_frame(&initial_input->line_frame,
+                                   saved_config.sensor_x_mm,
+                                   saved_config.wide_min_active,
+                                   &controller->line);
     }
 }
 
@@ -347,15 +485,66 @@ static float pattern_center(uint8_t normalized_bits)
     return (float)numerator / ((float)count * 7.0f);
 }
 
+static bool start_marker_capturable(const h2026_q2_controller_t *controller,
+                                    bool line_sample_valid)
+{
+    return line_sample_valid &&
+           (controller->line.classification == H2026_Q2_LINE_WIDE) &&
+           (controller->line.block_count == 1U) &&
+           (absf(pattern_center(controller->line.normalized_bits)) <=
+            controller->config.marker_center_limit_normalized) &&
+           (controller->line.active_count >=
+            controller->config.marker_capture_min_active);
+}
+
+static uint8_t marker_threshold(const h2026_q2_controller_t *controller);
+
+static void capture_start_marker(h2026_q2_controller_t *controller)
+{
+    controller->marker_captured = true;
+    controller->marker_reference_bits = controller->line.normalized_bits;
+    controller->marker_reference_count = controller->line.active_count;
+    controller->marker_detection_threshold = marker_threshold(controller);
+    controller->elapsed_ms = 0U;
+    controller->distance_m = 0.0f;
+    controller->stop_target_m = 0.0f;
+    controller->marker_edge_distance_m = 0.0f;
+    controller->marker_release_ms = 0U;
+    controller->marker_confirm_ms = 0U;
+    controller->stop_hold_ms = 0U;
+}
+
+static void begin_start(h2026_q2_controller_t *controller)
+{
+    controller->marker_captured = false;
+    controller->marker_reference_bits = 0U;
+    controller->marker_reference_count = 0U;
+    controller->marker_detection_threshold = 0U;
+    controller->marker_overlap_count = 0U;
+    controller->marker_pattern_center = 0.0f;
+    controller->elapsed_ms = 0U;
+    controller->distance_m = 0.0f;
+    controller->stop_target_m = 0.0f;
+    controller->marker_edge_distance_m = 0.0f;
+    controller->marker_release_ms = 0U;
+    controller->marker_confirm_ms = 0U;
+    controller->stop_hold_ms = 0U;
+    controller->fault = H2026_Q2_FAULT_NONE;
+    controller->fault_coasting = false;
+    controller->center_speed_command_mps = 0.0f;
+    controller->line_filter_initialized = false;
+    reset_pi(controller);
+}
+
 static bool marker_candidate(h2026_q2_controller_t *controller,
-                             bool line_i2c_valid)
+                             bool line_sample_valid)
 {
     uint8_t expanded_reference;
     uint8_t maximum_active;
 
     controller->marker_overlap_count = 0U;
     controller->marker_pattern_center = 0.0f;
-    if (!line_i2c_valid || !controller->marker_captured) {
+    if (!line_sample_valid || !controller->marker_captured) {
         return false;
     }
 
@@ -406,8 +595,7 @@ static uint8_t marker_threshold(const h2026_q2_controller_t *controller)
 
 static bool finish_gate_open(const h2026_q2_controller_t *controller)
 {
-    return controller->marker_captured &&
-           (controller->elapsed_ms >=
+    return (controller->elapsed_ms >=
             controller->config.finish_gate_time_ms) &&
            (controller->distance_m >=
             controller->config.finish_gate_distance_m);
@@ -486,11 +674,11 @@ static void update_odometry(h2026_q2_controller_t *controller,
 }
 
 static void update_line_filter(h2026_q2_controller_t *controller,
-                               bool line_i2c_valid)
+                                bool line_sample_valid)
 {
     const h2026_q2_config_t *config = &controller->config;
 
-    if (line_i2c_valid &&
+    if (line_sample_valid &&
         (controller->line.classification == H2026_Q2_LINE_NORMAL) &&
         controller->line.centroid_valid) {
         controller->last_raw_line_error = controller->line.centroid;
@@ -608,8 +796,9 @@ static float scheduled_tracking_speed(
     if (target < config->minimum_tracking_speed_mps) {
         target = config->minimum_tracking_speed_mps;
     }
-    if (controller->i2c_invalid_ms > config->i2c_grace_ms) {
-        target = fminf(target, config->degraded_i2c_speed_mps);
+    if (controller->line_sensor_invalid_ms >
+        config->line_sensor_grace_ms) {
+        target = fminf(target, config->degraded_sensor_speed_mps);
     }
     if (controller->line_unusable_ms > config->line_grace_ms) {
         target = fminf(target, config->degraded_line_speed_mps);
@@ -685,7 +874,7 @@ static float update_speed_pi(const h2026_q2_speed_pi_config_t *config,
 }
 
 static void run_motion_control(h2026_q2_controller_t *controller,
-                               bool line_i2c_valid)
+                                bool line_sample_valid)
 {
     const h2026_q2_config_t *config = &controller->config;
     float target_center;
@@ -693,10 +882,24 @@ static void run_motion_control(h2026_q2_controller_t *controller,
 
     float falling_limit_mps2 = config->deceleration_limit_mps2;
 
-    update_line_filter(controller, line_i2c_valid);
+    update_line_filter(controller, line_sample_valid);
     controller->track_curvature_1pm =
         curvature_at_distance(config, controller->distance_m);
     target_center = scheduled_tracking_speed(controller);
+
+    if (controller->state == H2026_Q2_STATE_START_ACQUIRE_LINE) {
+        target_center = controller->config.start_acquire_speed_mps;
+    }
+
+    /* In odometry-only mode, decelerate before the absolute lap target. */
+    if ((controller->state == H2026_Q2_STATE_LAP) &&
+        !controller->config.use_start_finish_marker &&
+        (controller->distance_m >=
+         (controller->config.finish_gate_distance_m -
+          controller->config.distance_finish_approach_m))) {
+        target_center = fminf(target_center,
+                              controller->config.zero_offset_approach_speed_mps);
+    }
 
     if (controller->state == H2026_Q2_STATE_STOPPING) {
         const float remaining =
@@ -725,6 +928,9 @@ static void run_motion_control(h2026_q2_controller_t *controller,
     total_turn =
         controller->line_pd_correction_mps +
         controller->curvature_feedforward_mps;
+    if (controller->state == H2026_Q2_STATE_START_ACQUIRE_LINE) {
+        total_turn = 0.0f;
+    }
     if (controller->state == H2026_Q2_STATE_STOPPING) {
         const float remaining =
             controller->stop_target_m - controller->distance_m;
@@ -814,14 +1020,14 @@ static void populate_output(h2026_q2_controller_t *controller,
                             h2026_q2_output_t *output)
 {
     const bool is_marker = marker_candidate(controller,
-                                            input->line_i2c_valid);
+                                             input->line_frame.valid);
     uint32_t flags = 0U;
 
     memset(output, 0, sizeof(*output));
-    if (input->line_i2c_valid) {
+    if (input->line_frame.valid) {
         flags |= H2026_Q2_DIAG_LINE_SAMPLE_VALID;
     }
-    if (input->line_i2c_valid && controller->line.centroid_valid) {
+    if (input->line_frame.valid && controller->line.centroid_valid) {
         flags |= H2026_Q2_DIAG_CENTROID_VALID;
     }
     if (controller->marker_captured) {
@@ -833,9 +1039,9 @@ static void populate_output(h2026_q2_controller_t *controller,
     if (finish_gate_open(controller)) {
         flags |= H2026_Q2_DIAG_FINISH_GATE_OPEN;
     }
-    if (controller->i2c_invalid_ms >
-        controller->config.i2c_grace_ms) {
-        flags |= H2026_Q2_DIAG_I2C_DEGRADED;
+    if (controller->line_sensor_invalid_ms >
+        controller->config.line_sensor_grace_ms) {
+        flags |= H2026_Q2_DIAG_LINE_SENSOR_DEGRADED;
     }
     if (controller->line_unusable_ms >
         controller->config.line_grace_ms) {
@@ -895,8 +1101,8 @@ static void populate_output(h2026_q2_controller_t *controller,
         controller->marker_release_ms;
     output->diagnostics.marker_confirm_ms =
         controller->marker_confirm_ms;
-    output->diagnostics.i2c_invalid_ms =
-        controller->i2c_invalid_ms;
+    output->diagnostics.line_sensor_invalid_ms =
+        controller->line_sensor_invalid_ms;
     output->diagnostics.line_unusable_ms =
         controller->line_unusable_ms;
     output->diagnostics.rejected_start_count =
@@ -939,18 +1145,17 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
     }
 
     update_odometry(controller, input, was_running);
-    if (input->line_i2c_valid) {
-        h2026_q2_line_decode(input->line_raw_reg5,
-                             controller->config.sensor_active_high,
-                             controller->config.sensor_bit0_is_left,
-                             controller->config.wide_min_active,
-                             &controller->line);
+    if (input->line_frame.valid) {
+        h2026_q2_line_decode_frame(&input->line_frame,
+                                   controller->config.sensor_x_mm,
+                                   controller->config.wide_min_active,
+                                   &controller->line);
     } else {
         /*
          * Preserve the last valid classification/centroid. The failed
          * transaction's byte is diagnostically visible but never feeds PD.
          */
-        controller->line.raw_bits = input->line_raw_reg5;
+        controller->line.raw_bits = input->line_frame.raw_bits;
     }
 
     if (was_running) {
@@ -959,21 +1164,27 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
         controller->state_elapsed_ms =
             add_tick_saturating(controller->state_elapsed_ms);
 
-        if (input->line_i2c_valid) {
-            controller->i2c_invalid_ms = 0U;
+        if (input->line_frame.valid) {
+            controller->line_sensor_invalid_ms = 0U;
         } else {
-            controller->i2c_invalid_ms =
-                add_tick_saturating(controller->i2c_invalid_ms);
+            controller->line_sensor_invalid_ms =
+                add_tick_saturating(controller->line_sensor_invalid_ms);
         }
 
         is_marker = marker_candidate(controller,
-                                     input->line_i2c_valid);
-        if (input->line_i2c_valid) {
+                                     input->line_frame.valid);
+        if (input->line_frame.valid) {
+            const bool start_marker_is_safe_here =
+                (controller->state ==
+                 H2026_Q2_STATE_SEEK_START_MARKER) &&
+                start_marker_capturable(controller,
+                                        input->line_frame.valid);
             const bool marker_is_safe_here =
-                is_marker &&
-                ((controller->state ==
-                  H2026_Q2_STATE_CLEAR_START) ||
-                 finish_gate_open(controller));
+                (controller->state == H2026_Q2_STATE_START_ACQUIRE_LINE) ||
+                start_marker_is_safe_here ||
+                (is_marker &&
+                 ((controller->state == H2026_Q2_STATE_CLEAR_START) ||
+                  finish_gate_open(controller)));
 
             if ((controller->line.classification ==
                  H2026_Q2_LINE_NORMAL) &&
@@ -988,7 +1199,7 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
             }
         }
     } else if (controller->state == H2026_Q2_STATE_IDLE) {
-        controller->i2c_invalid_ms = 0U;
+        controller->line_sensor_invalid_ms = 0U;
         controller->line_unusable_ms = 0U;
     } else if (controller->state == H2026_Q2_STATE_FAULT) {
         controller->state_elapsed_ms =
@@ -1002,12 +1213,16 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
     if (input->estop_event) {
         trip_fault(controller, H2026_Q2_FAULT_ESTOP);
     } else if (state_is_running(controller->state) &&
-               (controller->i2c_invalid_ms >=
-                controller->config.i2c_fault_ms)) {
-        trip_fault(controller, H2026_Q2_FAULT_I2C_TIMEOUT);
+               (controller->line_sensor_invalid_ms >=
+                controller->config.line_sensor_fault_ms)) {
+        trip_fault(controller, H2026_Q2_FAULT_LINE_SENSOR_TIMEOUT);
     } else if (state_is_running(controller->state) &&
                (controller->line_unusable_ms >=
                 controller->config.line_fault_ms)) {
+        trip_fault(controller, H2026_Q2_FAULT_LINE_TIMEOUT);
+    } else if ((controller->state == H2026_Q2_STATE_START_ACQUIRE_LINE) &&
+               (controller->state_elapsed_ms >=
+                controller->config.start_acquire_timeout_ms)) {
         trip_fault(controller, H2026_Q2_FAULT_LINE_TIMEOUT);
     } else if (state_is_running(controller->state) &&
                (controller->elapsed_ms >=
@@ -1019,52 +1234,59 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
         trip_fault(controller, H2026_Q2_FAULT_STOPPING_TIMEOUT);
     }
 
-    is_marker = marker_candidate(controller, input->line_i2c_valid);
+    is_marker = marker_candidate(controller, input->line_frame.valid);
     gate_open = finish_gate_open(controller);
 
     switch (controller->state) {
     case H2026_Q2_STATE_IDLE:
         if (input->start_event) {
-            if (input->line_i2c_valid &&
-                (controller->line.classification ==
-                 H2026_Q2_LINE_WIDE) &&
-                (controller->line.block_count == 1U) &&
-                (absf(pattern_center(
-                     controller->line.normalized_bits)) <=
-                 controller->config.marker_center_limit_normalized) &&
-                (controller->line.active_count >=
-                 controller->config.marker_capture_min_active)) {
-                controller->marker_captured = true;
-                controller->marker_reference_bits =
-                    controller->line.normalized_bits;
-                controller->marker_reference_count =
-                    controller->line.active_count;
-                controller->marker_detection_threshold =
-                    marker_threshold(controller);
-                controller->elapsed_ms = 0U;
-                controller->distance_m = 0.0f;
-                controller->stop_target_m = 0.0f;
-                controller->marker_edge_distance_m = 0.0f;
-                controller->marker_release_ms = 0U;
-                controller->marker_confirm_ms = 0U;
-                controller->stop_hold_ms = 0U;
-                controller->fault = H2026_Q2_FAULT_NONE;
-                controller->fault_coasting = false;
-                controller->center_speed_command_mps = 0.0f;
-                controller->line_filter_initialized = false;
-                reset_pi(controller);
+            if (controller->config.use_start_finish_marker &&
+                start_marker_capturable(controller,
+                                        input->line_frame.valid)) {
+                begin_start(controller);
+                capture_start_marker(controller);
                 transition_state(controller,
                                  H2026_Q2_STATE_CLEAR_START);
+            } else if (input->line_frame.valid &&
+                       controller->config.use_start_finish_marker &&
+                       (controller->line.classification ==
+                        H2026_Q2_LINE_NORMAL) &&
+                       controller->line.centroid_valid) {
+                begin_start(controller);
+                transition_state(controller,
+                                 H2026_Q2_STATE_SEEK_START_MARKER);
+            } else if (input->line_frame.valid &&
+                       !controller->config.use_start_finish_marker) {
+                /* The wheel datum is on the start line; sensor is 10 cm ahead. */
+                begin_start(controller);
+                transition_state(controller,
+                                 H2026_Q2_STATE_START_ACQUIRE_LINE);
             } else {
                 ++controller->rejected_start_count;
             }
         }
         break;
 
+    case H2026_Q2_STATE_START_ACQUIRE_LINE:
+        if (input->line_frame.valid &&
+            (controller->line.classification == H2026_Q2_LINE_NORMAL) &&
+            controller->line.centroid_valid) {
+            transition_state(controller, H2026_Q2_STATE_LAP);
+        }
+        break;
+
+    case H2026_Q2_STATE_SEEK_START_MARKER:
+        if (start_marker_capturable(controller, input->line_frame.valid)) {
+            /* Start lap odometry exactly at the leading edge of the marker. */
+            capture_start_marker(controller);
+            transition_state(controller, H2026_Q2_STATE_CLEAR_START);
+        }
+        break;
+
     case H2026_Q2_STATE_CLEAR_START:
         if (is_marker) {
             controller->marker_release_ms = 0U;
-        } else if (input->line_i2c_valid &&
+        } else if (input->line_frame.valid &&
                    (controller->line.classification ==
                     H2026_Q2_LINE_NORMAL)) {
             controller->marker_release_ms =
@@ -1082,12 +1304,23 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
 
     case H2026_Q2_STATE_LAP:
         controller->marker_confirm_ms = 0U;
-        if (gate_open && is_marker) {
+        if (!controller->config.use_start_finish_marker && gate_open) {
+            controller->stop_target_m =
+                controller->config.finish_gate_distance_m;
+            controller->stop_hold_ms = 0U;
+            transition_state(controller, H2026_Q2_STATE_STOPPING);
+        } else if (gate_open && is_marker) {
             controller->marker_edge_distance_m =
                 controller->distance_m;
-            controller->marker_confirm_ms = H2026_Q2_TICK_MS;
-            transition_state(controller,
-                             H2026_Q2_STATE_FINISH_ARMED);
+            if (controller->config.stop_distance_from_marker_m == 0.0f) {
+                controller->stop_target_m = controller->distance_m;
+                controller->stop_hold_ms = 0U;
+                transition_state(controller, H2026_Q2_STATE_STOPPING);
+            } else {
+                controller->marker_confirm_ms = H2026_Q2_TICK_MS;
+                transition_state(controller,
+                                 H2026_Q2_STATE_FINISH_ARMED);
+            }
         }
         break;
 
@@ -1148,7 +1381,7 @@ void h2026_q2_step(h2026_q2_controller_t *controller,
     }
 
     if (state_is_running(controller->state)) {
-        run_motion_control(controller, input->line_i2c_valid);
+        run_motion_control(controller, input->line_frame.valid);
     } else if (controller->state == H2026_Q2_STATE_FAULT) {
         command_fault_safe(controller);
     } else {
@@ -1162,6 +1395,10 @@ const char *h2026_q2_state_name(h2026_q2_state_t state)
     switch (state) {
     case H2026_Q2_STATE_IDLE:
         return "IDLE";
+    case H2026_Q2_STATE_START_ACQUIRE_LINE:
+        return "ACQUIRE_LINE";
+    case H2026_Q2_STATE_SEEK_START_MARKER:
+        return "SEEK_START";
     case H2026_Q2_STATE_CLEAR_START:
         return "CLEAR_START";
     case H2026_Q2_STATE_LAP:
@@ -1188,8 +1425,8 @@ const char *h2026_q2_fault_name(h2026_q2_fault_t fault)
         return "CONFIG";
     case H2026_Q2_FAULT_ESTOP:
         return "ESTOP";
-    case H2026_Q2_FAULT_I2C_TIMEOUT:
-        return "I2C_TIMEOUT";
+    case H2026_Q2_FAULT_LINE_SENSOR_TIMEOUT:
+        return "LINE_SENSOR_TIMEOUT";
     case H2026_Q2_FAULT_LINE_TIMEOUT:
         return "LINE_TIMEOUT";
     case H2026_Q2_FAULT_MISSION_TIMEOUT:

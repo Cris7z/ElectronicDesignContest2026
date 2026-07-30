@@ -12,21 +12,21 @@
 |---|---|
 | 实时主控 | WHEELTEC C07A + S27F/S28A 模块化控制器 / MSPM0G3507 |
 | 底盘驱动 | 板载 D103A/TB6612 + MG513XP28 12 V 编码电机 |
-| 主循迹 | HiWonder LineFollower_8CH v1.0 八路红外，Q2 当前使用 H8 PB6/PB7 原生 UART |
-| 备用循迹 | LF04 四路红外；现场若不允许智能/灰度学习模块时换装 |
+| 主循迹 | CD4051 八路灰度：PA12/PA27/PB16 选址，PB17 ADC 采样 |
+| 备用循迹 | LF04 已拔除；U3 被八路灰度模块占用，换装需重新接线 |
 | 球杆执行器 | D36A + 42 步进电机 + MS42CG A/B/PWM 编码器 |
 | 视觉与图传 | 01Studio CanMV K230 标准版 + 标配 GC2093 70° |
 | 控制通信 | K230 UART2 单向发送球状态给 MSPM0 |
 | 无线视频 | K230 硬件 H.264/RTSP + 2.4 GHz AP/热点 + 场外 OBS/VLC |
-| 控制器内置/插接模块 | P03B 稳压、MPU6050、D103A/TB6612、OLED、蓝牙 |
-| 车载显示 | 模块化控制器 OLED，用于启动计时和故障状态 |
+| 控制器内置/插接模块 | P03B 稳压、MPU6050、D103A/TB6612、蓝牙；原四线 OLED 停用 |
+| 车载显示 | 外接四针 I²C OLED（PA1/PA0，3.3 V，默认 0x3C），用于启动计时和故障状态 |
 
 ## 系统架构
 
 ```mermaid
 flowchart LR
-    LINE8["HiWonder LineFollower_8CH v1.0\n八路红外 / UART 115200"] --> MCU["MSPM0G3507 / 模块化控制器\n唯一实时控制主机"]
-    LF["LF04 四路红外\n规则备用"] -.-> MCU
+    LINE8["CD4051 八路灰度\nAD2/AD1/AD0 + PB17 ADC"] --> MCU["MSPM0G3507 / 模块化控制器\n唯一实时控制主机"]
+    LF["LF04 四路红外\n换装备用"] -.-> MCU
     IMU["MPU6050\n车体姿态"] --> MCU
     WE["左右轮编码器"] --> MCU
     BE["MS42CG A/B/PWM"] --> MCU
@@ -94,8 +94,8 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 | D157B 双 AT8236 | 已购、当前不接入 | 不与板载 TB6612 并用 |
 | 32 cm × 24 cm 三轮底盘 | 已购 | 机械底盘；横向仅余 1 cm 合规空间 |
 | MG513XP28 12 V 编码电机 ×2 | 已购 | 左右轮闭环 |
-| HiWonder LineFollower_8CH v1.0 八路红外 | 已购 | 主循迹；5 V/85 mA，I²C 固定 7 位地址 0x5D |
-| LF04 四路红外 | 已购 | 规则备用；占 U3 四路 GPIO，主传感器改走 H5 I²C 后不再冲突 |
+| CD4051 八路灰度模块 | 已接入 | 主循迹；5 V，PA12/PA27/PB16 选址，PB17 ADC 采 OUT |
+| HiWonder / LF04 | 已购、当前拔除 | 不与占用 U3 的八路灰度模块并接 |
 | D36A | **型号已确定** | 球杆 STEP/DIR/EN 驱动 |
 | 42 步进 + MS42CG 编码器 | 已购 | 球杆角度闭环 |
 | 25 cm PPR 管、钢球、铰链和传动件 | 已有/已购 | 球杆机械系统 |
@@ -104,9 +104,8 @@ CanMV_K230_01Studio_micropython_v1.8-0-gc2d1f5c_nncase_v2.11.0.img.gz
 | 2.4 GHz AP/热点 | 可选 | 可用现有路由器、手机/电脑热点或 K230 AP |
 
 完整 BOM 状态和限制见 [硬件及接线清单](硬件及接线清单.md)。
-八路红外的型号、尺寸、5 V/85 mA 参数和寄存器表同时核对了
-[HiWonder 官方介绍](https://docs.hiwonder.com/projects/8-ch-Line-Follower/en/latest/docs/1.8-chLine_Follower_Introduction.html)
-与[官方快速上手](https://docs.hiwonder.com/projects/8-ch-Line-Follower/en/latest/docs/2.Quick_Start.html)。
+八路灰度换装以 `硬件及接线清单.md` 与当前 Q2 SysConfig 为准；首次上电前必须
+测 OUT 电压、CD4051 地址逻辑裕量与全部八路的物理顺序。
 
 ## 供电
 
@@ -140,11 +139,9 @@ flowchart TD
 | 右电机 | PB2 / TIMA1_CCP0，PA14 / PA13 | TB6612 A 路 PWMA、AIN1、AIN2 |
 | 左轮编码器 A/B | PA25 / PA26 | GPIO 中断软件正交 |
 | 右轮编码器 A/B | PB20 / PB24 | GPIO 中断软件正交 |
-| MPU6050 SDA/SCL/INT | PA0 / PA1 / PA7，H5 | 保留原装模块；不与八路红外共线 |
-| 8 路红外 UART | PB6 TX / PB7 RX，UART1 | H8 Pin 2/3；交叉接传感器 RX/TX，115200 8N1 |
-| 8 路红外 5V/GND | H8 Pin 5 / Pin 4 | 蓝牙模块必须物理拔下 |
-| LF04 备用 O1/O2/O3/O4 | PA27 / PA12 / PB16 / PB17 | 厂商线序对应 U3 Pin 6/5/4/3；备用换装时启用 `lf04` 驱动 |
-| OLED SCL/SDA/RST/DC | PA28 / PA31 / PB14 / PB15 | C07A 板载 OLED |
+| MPU6050 SDA/SCL/INT | PA0 / PA1 / PA7，H5 | 与外接 OLED 共用 I²C0；不与八路灰度共线 |
+| CD4051 灰度 AD2/AD1/AD0/OUT | PA12 / PA27 / PB16 / PB17 | U3 四线；OUT=ADC1_A1_4，LF04 当前拔除 |
+| 外接 OLED SDA/SCL | PA0 / PA1，I²C0 | 四针 SSD1306 兼容屏，默认 0x3C，VCC=3.3 V，不能接 H5 5 V |
 | 启动键 BLS | PA18 | 消抖；长按急停 |
 | 状态 LED | PB9 | 运行/故障指示 |
 | 5 ms 控制节拍 | TIMG7 | TIMG6 已给左电机 |
@@ -166,11 +163,11 @@ MPU6050 保留原装连接：PA0=SDA、PA1=SCL、PA7=INT。D103A/TB6612 当前
 用于车轮，已占 PB2/PB3、PA13/PA14、PA16/PA17；因此 D36A/MS42CG 在重新
 分配 STEP、DIR 和绝对 PWM 前保持断开，CCD 口保持空置。
 
-HiWonder 不与 MPU6050 共用 H5：MPU6050 保持 PA0/PA1/PA7 原插接。当前
-HiWonder 使用原生 UART：H8 `5=5V、4=GND、2=PB6/TX→传感器RX、
-3=PB7/RX←传感器TX`，115200 8N1；U3 的 SDA/SCL 线须断开。模块先收 `0`
-进入手动模式，主控周期性发 `1`，接收一个 S1..S8 状态字节。此前 H8 信号针
-有过异常通断结果，因此必须以持续的 UART 响应与逐路遮挡 bit 变化为准。
+MPU6050 保持 PA0/PA1/PA7 原插接；外接 OLED 以不同 I²C 地址 `0x3C` 共用
+PA0/PA1，VCC 必须接 3.3 V。CD4051 灰度板使用 U3 四线：
+`AD2=PA12、AD1=PA27、AD0=PB16、OUT=PB17/ADC1_A1_4`；H8 PB6/PB7 不由
+当前 Q2 使用。OUT 必须确认限制在 0..VDD，5 V mux 若无 3.3 V 逻辑裕量则给
+AD0/AD1/AD2 加 74AHCT125。
 
 ### K230 到 MSPM0
 
@@ -182,8 +179,8 @@ HiWonder 使用原生 UART：H8 `5=5V、4=GND、2=PB6/TX→传感器RX、
 | 3V3 | 不接 | 不并联两板电源 |
 
 K230 背面 4P 座按板端丝印核对：
-`GND / 3V3 / IO12-RX2 / IO11-TX2`，不得根据转接线颜色猜信号。Q2 的
-HiWonder 当前占用 H8 的 PB6/PB7；蓝牙模块与 K230 均必须物理断开。
+`GND / 3V3 / IO12-RX2 / IO11-TX2`，不得根据转接线颜色猜信号。PB6/PB7
+虽已释放，K230 仍须经过独立联调；蓝牙模块必须物理断开。
 
 ## 机械冻结
 
@@ -196,7 +193,7 @@ HiWonder 当前占用 H8 的 PB6/PB7；蓝牙模块与 K230 均必须物理断�
 ## 上电与联调顺序
 
 1. 检查所有电源支路、极性、保险和共地，动力支路先断开。
-2. 拔蓝牙后按 H8 `5/4=5V/GND` 保留八路红外供电，并按 U3 `4/3=SCL/SDA` 接信号；点亮模块化控制器、OLED、MPU6050 和传感器，读取寄存器 5 并确认启动键与 5 ms 节拍。
+2. 拔蓝牙后接 CD4051：`AD2/AD1/AD0/OUT=PA12/PA27/PB16/PB17`，5 V/GND 共地；点亮模块化控制器、外接 OLED、MPU6050 和传感器，读取八路 ADC 并确认启动键与 5 ms 节拍。
 3. 架空验证 TB6612 的两路 PWM/方向、左右电机方向和编码器符号。
 4. 不接步进动力，用示波器确认 D36A `STEP/DIR/EN` 和复位失能状态。
 5. 接 3.3 V 编码器，验证 PB18/PB19 软件正交和绝对 PWM 后再低速接入步进电机。
@@ -211,7 +208,7 @@ HiWonder 当前占用 H8 的 PB6/PB7；蓝牙模块与 K230 均必须物理断�
 | Python `ball_tracker.py` 语法检查 | PASS |
 | 原通用小车 PC 仿真 6 项 | PASS |
 | H1 球状态帧、CRC 和超时 | PASS |
-| H2 HiWonder 8 路 I²C 寄存器、译码与 LF04 备用 | PASS |
+| H2 CD4051 八路 ADC 扫描、灰度帧译码与 CRC 标定 | 固件与主机回归 PASS；实测白约 170、黑 4095 ADC，R0..R7 左至右，CRC=0x74D9；1000 帧时序复核待做 |
 | H3 球位置外环模型 | PASS，最终误差约 0.2 mm |
 | 真车 TB6612/D36A/K230 联调 | TB6612 已验证；D36A/K230 待实物 |
 

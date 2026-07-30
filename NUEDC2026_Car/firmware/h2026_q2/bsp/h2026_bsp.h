@@ -15,25 +15,32 @@
 
 #define H2026_BSP_CONTROL_PERIOD_MS       5u
 #define H2026_BSP_DISPLAY_PERIOD_MS     100u
-#define H2026_BSP_LINE_I2C_ADDRESS_7BIT   0x5Du
-#define H2026_BSP_LINE_STATE_REGISTER     5u
+#define H2026_BSP_LINE_SENSOR_COUNT         8u
 
 typedef struct {
     int64_t left_count;
     int64_t right_count;
     uint32_t left_invalid_transitions;
     uint32_t right_invalid_transitions;
+    uint32_t left_edge_events;
+    uint32_t right_edge_events;
+    uint8_t left_phase;
+    uint8_t right_phase;
 } h2026_bsp_encoder_snapshot_t;
 
 typedef struct {
-    uint32_t i2c_transactions;
-    uint32_t i2c_timeouts;
-    uint32_t i2c_bus_errors;
-    uint32_t line_uart_requests;
-    uint32_t line_uart_responses;
-    uint32_t line_uart_timeouts;
+    uint32_t line_scan_count;
+    uint32_t line_scan_failures;
+    uint32_t line_scan_max_us;
     uint32_t control_tick_overruns;
 } h2026_bsp_diagnostics_t;
+
+typedef struct {
+    uint16_t raw_adc[H2026_BSP_LINE_SENSOR_COUNT];
+    uint16_t scan_us;
+    uint32_t sample_seq;
+    bool valid;
+} h2026_bsp_line_sample_t;
 
 /**
  * Initialise generated peripherals, force both TB6612 channels to coast,
@@ -51,7 +58,7 @@ bool h2026_bsp_take_control_tick(uint32_t *overrun_count);
 uint32_t h2026_bsp_millis(void);
 
 /**
- * The 5 ms control-timer ISR raises this flag every 100 ms.  OLED bytes are
+ * The 5 ms control-timer ISR raises this flag every 100 ms. OLED I2C bytes are
  * never sent from the ISR: the foreground consumes one page per control tick
  * and clears the request after the whole eight-page frame has been sent.
  */
@@ -89,31 +96,20 @@ void h2026_bsp_motor_brake(void);
 void h2026_bsp_encoder_snapshot(h2026_bsp_encoder_snapshot_t *snapshot);
 
 /**
- * Foreground-only bounded software-I2C transaction on U3 PB16/PB17:
- * write register selector 5, then read one state byte from address 0x5D.
- * It never runs from an ISR and returns false on timeout or bus error.
+ * Foreground-only CD4051 scan.  It selects channels 000..111, waits the
+ * configured settle time, discards one ADC conversion and averages the next
+ * four.  No part of this routine runs in an ISR.
  */
-bool h2026_bsp_line_read_reg5(uint8_t *state);
-
-/**
- * Foreground-only native HiWonder UART state read on UART1 PB6/PB7, 115200
- * 8N1.  Initialisation places the module in manual mode (command 0); each
- * call requests command 1 when the previous response is complete.  A fresh
- * one-byte S1..S8 state response returns true.  The last response remains
- * valid for 30 ms so a single delayed byte does not make the motion loop
- * fault spuriously.
- */
-bool h2026_bsp_line_uart_read_state(uint8_t *state);
+bool h2026_bsp_line_scan(h2026_bsp_line_sample_t *sample);
 
 /** Raw PA18 input level; active polarity and debounce belong to the app. */
 bool h2026_bsp_start_level(void);
 void h2026_bsp_led_set(bool on);
 
 /**
- * Foreground-only four-wire OLED transport.  Keep refreshes low-rate; these
- * calls intentionally never execute in the 5 ms timer ISR.
+ * Foreground-only SSD1306 I2C transport at 7-bit address 0x3C. Keep refreshes
+ * low-rate; these calls intentionally never execute in the 5 ms timer ISR.
  */
-void h2026_bsp_oled_reset(void);
 void h2026_bsp_oled_write_command(uint8_t command);
 void h2026_bsp_oled_write_data(const uint8_t *data, size_t length);
 

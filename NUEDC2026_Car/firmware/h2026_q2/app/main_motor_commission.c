@@ -25,7 +25,7 @@
 #define AUTO_DRIVE_TICKS        (600U)  /* 3 s */
 #define BLS_NEXT_TEST_GUARD_TICKS (200U) /* 1 s */
 #define AUTO_NEXT_TEST_GUARD_TICKS (400U) /* 2 s */
-#define MOTOR_TEST_DUTY         (0.35f)
+#define MOTOR_TEST_DUTY         (0.10f)
 
 #if H2026_MOTOR_TEST_AUTORUN
 #define STARTUP_QUIET_TICKS AUTO_STARTUP_QUIET_TICKS
@@ -50,6 +50,12 @@ typedef enum {
 static volatile motor_test_stage_t s_stage;
 static volatile int64_t s_left_encoder_delta;
 static volatile int64_t s_right_encoder_delta;
+static volatile int64_t s_left_test_right_encoder_delta;
+static volatile int64_t s_right_test_left_encoder_delta;
+static volatile uint32_t s_left_encoder_invalid;
+static volatile uint32_t s_right_encoder_invalid;
+static volatile uint32_t s_left_encoder_events;
+static volatile uint32_t s_right_encoder_events;
 static volatile uint32_t s_completed_tests;
 
 static bool s_button_stable;
@@ -61,6 +67,10 @@ static uint32_t s_next_test_allowed_tick;
 static uint32_t s_overrun_baseline;
 static int64_t s_left_encoder_start;
 static int64_t s_right_encoder_start;
+static uint32_t s_left_invalid_start;
+static uint32_t s_right_invalid_start;
+static uint32_t s_left_events_start;
+static uint32_t s_right_events_start;
 static bool s_display_job_active;
 
 /* A debounced change is sufficient: the physical BLS active polarity is not
@@ -126,6 +136,10 @@ static void begin_test(motor_test_stage_t stage)
     h2026_bsp_encoder_snapshot(&encoders);
     s_left_encoder_start = encoders.left_count;
     s_right_encoder_start = encoders.right_count;
+    s_left_invalid_start = encoders.left_invalid_transitions;
+    s_right_invalid_start = encoders.right_invalid_transitions;
+    s_left_events_start = encoders.left_edge_events;
+    s_right_events_start = encoders.right_edge_events;
     s_drive_start_tick = s_ticks;
     s_stage = stage;
     h2026_bsp_motor_arm(true);
@@ -145,9 +159,19 @@ static void finish_test(void)
     h2026_bsp_encoder_snapshot(&encoders);
     if (s_stage == MOTOR_TEST_DRIVE_LEFT) {
         s_left_encoder_delta = encoders.left_count - s_left_encoder_start;
+        s_left_test_right_encoder_delta =
+            encoders.right_count - s_right_encoder_start;
+        s_left_encoder_invalid =
+            encoders.left_invalid_transitions - s_left_invalid_start;
+        s_left_encoder_events = encoders.left_edge_events - s_left_events_start;
         s_stage = MOTOR_TEST_READY_RIGHT;
     } else {
+        s_right_test_left_encoder_delta =
+            encoders.left_count - s_left_encoder_start;
         s_right_encoder_delta = encoders.right_count - s_right_encoder_start;
+        s_right_encoder_invalid =
+            encoders.right_invalid_transitions - s_right_invalid_start;
+        s_right_encoder_events = encoders.right_edge_events - s_right_events_start;
         s_stage = MOTOR_TEST_DONE;
     }
     ++s_completed_tests;
@@ -162,7 +186,13 @@ static void display_service(void)
     if (!s_display_job_active) {
         h2026_q2_display_render_motor_commission((uint8_t)s_stage,
                                                   s_left_encoder_delta,
+                                                  s_left_test_right_encoder_delta,
+                                                  s_right_test_left_encoder_delta,
                                                   s_right_encoder_delta,
+                                                  s_left_encoder_invalid,
+                                                  s_right_encoder_invalid,
+                                                  s_left_encoder_events,
+                                                  s_right_encoder_events,
                                                   s_completed_tests);
         s_display_job_active = true;
     }
@@ -197,6 +227,12 @@ int main(void)
     s_stage = MOTOR_TEST_QUIET;
     s_left_encoder_delta = 0;
     s_right_encoder_delta = 0;
+    s_left_test_right_encoder_delta = 0;
+    s_right_test_left_encoder_delta = 0;
+    s_left_encoder_invalid = 0u;
+    s_right_encoder_invalid = 0u;
+    s_left_encoder_events = 0u;
+    s_right_encoder_events = 0u;
     s_completed_tests = 0U;
     s_display_job_active = false;
 

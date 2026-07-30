@@ -12,19 +12,21 @@ const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
 const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
 const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
+const ADC12  = scripting.addModule("/ti/driverlib/ADC12", {}, false);
+const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
 const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
 
 const PWM_MOTOR = PWM.addInstance();
 const TIMER_CONTROL = TIMER.addInstance();
 const UART_DEBUG = UART.addInstance();
-const UART_LINE_SENSOR = UART.addInstance();
+const ADC_LINE_SENSOR = ADC12.addInstance();
+const I2C_OLED = I2C.addInstance();
 
 const GPIO_ENCODER_LEFT  = GPIO.addInstance();
 const GPIO_ENCODER_RIGHT = GPIO.addInstance();
 const GPIO_MOTOR_DIR     = GPIO.addInstance();
 const GPIO_UI            = GPIO.addInstance();
-const GPIO_OLED          = GPIO.addInstance();
-const GPIO_LINE_SOFT_I2C = GPIO.addInstance();
+const GPIO_LINE_MUX = GPIO.addInstance();
 
 const Board = scripting.addModule("/ti/driverlib/Board", {}, false);
 
@@ -51,20 +53,40 @@ TIMER_CONTROL.timerPeriod = "5 ms";
 TIMER_CONTROL.timerStartTimer = false;
 TIMER_CONTROL.peripheral.$assign = "TIMG7";
 
-/*
- * Legacy U3 PB16/PB17 software-I2C pins remain configured as released inputs
- * while the harness is moved to the sensor's native UART.  They are not read
- * by the control loop and must be physically disconnected from HiWonder.
- */
-GPIO_LINE_SOFT_I2C.$name = "GPIO_LINE_SOFT_I2C";
-GPIO_LINE_SOFT_I2C.port = "PORTB";
-GPIO_LINE_SOFT_I2C.associatedPins.create(2);
-GPIO_LINE_SOFT_I2C.associatedPins[0].$name = "LINE_SCL";
-GPIO_LINE_SOFT_I2C.associatedPins[0].assignedPin = "16";
-GPIO_LINE_SOFT_I2C.associatedPins[0].direction = "INPUT";
-GPIO_LINE_SOFT_I2C.associatedPins[1].$name = "LINE_SDA";
-GPIO_LINE_SOFT_I2C.associatedPins[1].assignedPin = "17";
-GPIO_LINE_SOFT_I2C.associatedPins[1].direction = "INPUT";
+/* CD4051 eight-channel gray board: AD2=PA12, AD1=PA27, AD0=PB16, OUT=PB17. */
+GPIO_LINE_MUX.$name = "GPIO_LINE_MUX";
+GPIO_LINE_MUX.associatedPins.create(3);
+GPIO_LINE_MUX.associatedPins[0].$name = "LINE_AD2";
+GPIO_LINE_MUX.associatedPins[0].assignedPort = "PORTA";
+GPIO_LINE_MUX.associatedPins[0].assignedPin = "12";
+GPIO_LINE_MUX.associatedPins[0].initialValue = "CLEARED";
+GPIO_LINE_MUX.associatedPins[1].$name = "LINE_AD1";
+GPIO_LINE_MUX.associatedPins[1].assignedPort = "PORTA";
+GPIO_LINE_MUX.associatedPins[1].assignedPin = "27";
+GPIO_LINE_MUX.associatedPins[1].initialValue = "CLEARED";
+GPIO_LINE_MUX.associatedPins[2].$name = "LINE_AD0";
+GPIO_LINE_MUX.associatedPins[2].assignedPort = "PORTB";
+GPIO_LINE_MUX.associatedPins[2].assignedPin = "16";
+GPIO_LINE_MUX.associatedPins[2].initialValue = "CLEARED";
+
+ADC_LINE_SENSOR.$name = "ADC_LINE_SENSOR";
+ADC_LINE_SENSOR.sampClkSrc = "DL_ADC12_CLOCK_ULPCLK";
+ADC_LINE_SENSOR.sampClkDiv = "DL_ADC12_CLOCK_DIVIDE_8";
+ADC_LINE_SENSOR.adcMem0chansel = "DL_ADC12_INPUT_CHAN_4";
+/* Default supports the 1.2 ms scan budget; validate after any divider fit. */
+ADC_LINE_SENSOR.sampleTime0 = "1us";
+ADC_LINE_SENSOR.powerDownMode = "DL_ADC12_POWER_DOWN_MODE_MANUAL";
+ADC_LINE_SENSOR.peripheral.$assign = "ADC1";
+ADC_LINE_SENSOR.peripheral.adcPin4.$assign = "PB17";
+
+/* External four-pin OLED and the retained MPU6050 share I2C0 safely. */
+I2C_OLED.$name = "I2C_OLED";
+I2C_OLED.basicEnableController = true;
+I2C_OLED.basicControllerBusSpeed = 400000;
+I2C_OLED.advAnalogGlitchFilter = "DISABLED";
+I2C_OLED.peripheral.$assign = "I2C0";
+I2C_OLED.peripheral.sdaPin.$assign = "PA0";
+I2C_OLED.peripheral.sclPin.$assign = "PA1";
 
 UART_DEBUG.$name = "UART_DEBUG";
 UART_DEBUG.enableFIFO = true;
@@ -76,45 +98,36 @@ UART_DEBUG.peripheral.$assign = "UART0";
 UART_DEBUG.peripheral.txPin.$assign = "PA10";
 UART_DEBUG.peripheral.rxPin.$assign = "PA11";
 
-/*
- * HiWonder LineFollower_8CH v1.0 native UART, 115200 8N1.
- * H8-2 PB6 (MCU TX) -> sensor RX; H8-3 PB7 (MCU RX) <- sensor TX.
- * The removable Bluetooth module and K230 must both remain disconnected.
- */
-UART_LINE_SENSOR.$name = "UART_LINE_SENSOR";
-UART_LINE_SENSOR.enableFIFO = true;
-UART_LINE_SENSOR.enableDMARX = false;
-UART_LINE_SENSOR.enableDMATX = false;
-UART_LINE_SENSOR.targetBaudRate = 115200;
-UART_LINE_SENSOR.peripheral.$assign = "UART1";
-UART_LINE_SENSOR.peripheral.txPin.$assign = "PB6";
-UART_LINE_SENSOR.peripheral.rxPin.$assign = "PB7";
 
-/* Both encoder phases use GPIO rise/fall interrupts (four-edge decoding). */
+/*
+ * Both encoder phases use GPIO rise/fall interrupts (four-edge decoding).
+ * C07A/S27F logical left is TB6612 channel B (PB20/PB24); logical right is
+ * channel A (PA25/PA26).  This follows the bench-verified wheel mapping.
+ */
 GPIO_ENCODER_LEFT.$name = "GPIO_ENCODER_LEFT";
-GPIO_ENCODER_LEFT.port = "PORTA";
+GPIO_ENCODER_LEFT.port = "PORTB";
 GPIO_ENCODER_LEFT.associatedPins.create(2);
 GPIO_ENCODER_LEFT.associatedPins[0].$name = "LEFT_A";
-GPIO_ENCODER_LEFT.associatedPins[0].assignedPin = "25";
+GPIO_ENCODER_LEFT.associatedPins[0].assignedPin = "20";
 GPIO_ENCODER_LEFT.associatedPins[0].direction = "INPUT";
 GPIO_ENCODER_LEFT.associatedPins[0].interruptEn = true;
 GPIO_ENCODER_LEFT.associatedPins[0].polarity = "RISE_FALL";
 GPIO_ENCODER_LEFT.associatedPins[1].$name = "LEFT_B";
-GPIO_ENCODER_LEFT.associatedPins[1].assignedPin = "26";
+GPIO_ENCODER_LEFT.associatedPins[1].assignedPin = "24";
 GPIO_ENCODER_LEFT.associatedPins[1].direction = "INPUT";
 GPIO_ENCODER_LEFT.associatedPins[1].interruptEn = true;
 GPIO_ENCODER_LEFT.associatedPins[1].polarity = "RISE_FALL";
 
 GPIO_ENCODER_RIGHT.$name = "GPIO_ENCODER_RIGHT";
-GPIO_ENCODER_RIGHT.port = "PORTB";
+GPIO_ENCODER_RIGHT.port = "PORTA";
 GPIO_ENCODER_RIGHT.associatedPins.create(2);
 GPIO_ENCODER_RIGHT.associatedPins[0].$name = "RIGHT_A";
-GPIO_ENCODER_RIGHT.associatedPins[0].assignedPin = "20";
+GPIO_ENCODER_RIGHT.associatedPins[0].assignedPin = "25";
 GPIO_ENCODER_RIGHT.associatedPins[0].direction = "INPUT";
 GPIO_ENCODER_RIGHT.associatedPins[0].interruptEn = true;
 GPIO_ENCODER_RIGHT.associatedPins[0].polarity = "RISE_FALL";
 GPIO_ENCODER_RIGHT.associatedPins[1].$name = "RIGHT_B";
-GPIO_ENCODER_RIGHT.associatedPins[1].assignedPin = "24";
+GPIO_ENCODER_RIGHT.associatedPins[1].assignedPin = "26";
 GPIO_ENCODER_RIGHT.associatedPins[1].direction = "INPUT";
 GPIO_ENCODER_RIGHT.associatedPins[1].interruptEn = true;
 GPIO_ENCODER_RIGHT.associatedPins[1].polarity = "RISE_FALL";
@@ -145,28 +158,9 @@ GPIO_UI.associatedPins[0].$name = "START";
 GPIO_UI.associatedPins[0].assignedPort = "PORTA";
 GPIO_UI.associatedPins[0].assignedPin = "18";
 GPIO_UI.associatedPins[0].direction = "INPUT";
-GPIO_UI.associatedPins[0].internalResistor = "PULL_UP";
+/* C07A SW3/BLS already has R8=47 kOhm external pull-down; pressing drives 3V3. */
+GPIO_UI.associatedPins[0].internalResistor = "NONE";
 GPIO_UI.associatedPins[1].$name = "STATUS_LED";
 GPIO_UI.associatedPins[1].assignedPort = "PORTB";
 GPIO_UI.associatedPins[1].assignedPin = "9";
 GPIO_UI.associatedPins[1].initialValue = "CLEARED";
-
-/* Installed four-wire OLED: SCL/SDA/RST/DC, bit-banged at low refresh rate. */
-GPIO_OLED.$name = "GPIO_OLED";
-GPIO_OLED.associatedPins.create(4);
-GPIO_OLED.associatedPins[0].$name = "SCL";
-GPIO_OLED.associatedPins[0].assignedPort = "PORTA";
-GPIO_OLED.associatedPins[0].assignedPin = "28";
-GPIO_OLED.associatedPins[0].initialValue = "CLEARED";
-GPIO_OLED.associatedPins[1].$name = "SDA";
-GPIO_OLED.associatedPins[1].assignedPort = "PORTA";
-GPIO_OLED.associatedPins[1].assignedPin = "31";
-GPIO_OLED.associatedPins[1].initialValue = "CLEARED";
-GPIO_OLED.associatedPins[2].$name = "RST";
-GPIO_OLED.associatedPins[2].assignedPort = "PORTB";
-GPIO_OLED.associatedPins[2].assignedPin = "14";
-GPIO_OLED.associatedPins[2].initialValue = "SET";
-GPIO_OLED.associatedPins[3].$name = "DC";
-GPIO_OLED.associatedPins[3].assignedPort = "PORTB";
-GPIO_OLED.associatedPins[3].assignedPin = "15";
-GPIO_OLED.associatedPins[3].initialValue = "CLEARED";

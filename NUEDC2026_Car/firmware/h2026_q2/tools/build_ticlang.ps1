@@ -3,7 +3,10 @@ param(
     [string]$CcsRoot = 'D:\A-Soft\DevTools\TI\ccs2100',
     [string]$OutputDirectory = '',
     [switch]$MotorCommissionTest,
-    [switch]$MotorCommissionAuto
+    [switch]$MotorCommissionAuto,
+    [switch]$EncoderPassiveDiagnostic,
+    [switch]$BlsPassiveDiagnostic,
+    [switch]$DistanceCalibrationDiagnostic
 )
 
 Set-StrictMode -Version Latest
@@ -12,6 +15,17 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ($MotorCommissionAuto -and (-not $MotorCommissionTest)) {
     throw '-MotorCommissionAuto requires -MotorCommissionTest.'
+}
+if (($EncoderPassiveDiagnostic -or $BlsPassiveDiagnostic -or $DistanceCalibrationDiagnostic) -and
+    ($MotorCommissionTest -or $MotorCommissionAuto)) {
+    throw 'Passive diagnostics cannot be combined with motor-test options.'
+}
+$diagnosticCount = 0
+if ($EncoderPassiveDiagnostic) { ++$diagnosticCount }
+if ($BlsPassiveDiagnostic) { ++$diagnosticCount }
+if ($DistanceCalibrationDiagnostic) { ++$diagnosticCount }
+if ($diagnosticCount -gt 1) {
+    throw 'Choose only one diagnostic.'
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $projectRoot 'Debug'
@@ -49,14 +63,38 @@ if ($LASTEXITCODE -ne 0) {
     throw "SysConfig failed with exit code $LASTEXITCODE"
 }
 
+# Reserve the final 1 KiB main-Flash sector (0x1FC00..0x1FFFF) exclusively
+# for the line-sensor calibration record. SysConfig regenerates this linker
+# file on every build, so make the reservation immediately after generation.
+$linkerFile = Join-Path $OutputDirectory 'device_linker.cmd'
+$linkerText = [IO.File]::ReadAllText($linkerFile)
+$flashRegion = '(?m)^(\s*FLASH\s+\(RX\)\s*:\s*origin\s*=\s*0x00000000,\s*length\s*=\s*)0x00020000'
+if (-not [regex]::IsMatch($linkerText, $flashRegion)) {
+    throw "Unexpected Flash region in generated linker file: $linkerFile"
+}
+[IO.File]::WriteAllText($linkerFile,
+    [regex]::Replace($linkerText, $flashRegion, '${1}0x0001FC00'))
+
 $sourceRoot = Join-Path $SdkRoot 'source'
 $cmsisRoot = Join-Path $sourceRoot 'third_party\CMSIS\Core\Include'
-$applicationSource = if ($MotorCommissionTest) {
+$applicationSource = if ($DistanceCalibrationDiagnostic) {
+    Join-Path $projectRoot 'app\main_distance_calibration.c'
+} elseif ($BlsPassiveDiagnostic) {
+    Join-Path $projectRoot 'app\main_bls_passive.c'
+} elseif ($EncoderPassiveDiagnostic) {
+    Join-Path $projectRoot 'app\main_encoder_passive.c'
+} elseif ($MotorCommissionTest) {
     Join-Path $projectRoot 'app\main_motor_commission.c'
 } else {
     Join-Path $projectRoot 'app\main.c'
 }
-$outputStem = if ($MotorCommissionTest) {
+$outputStem = if ($DistanceCalibrationDiagnostic) {
+    'h2026_q2_distance_cal'
+} elseif ($BlsPassiveDiagnostic) {
+    'h2026_q2_bls_passive'
+} elseif ($EncoderPassiveDiagnostic) {
+    'h2026_q2_encoder_passive'
+} elseif ($MotorCommissionTest) {
     'h2026_q2_motor_test'
 } else {
     'h2026_q2'
