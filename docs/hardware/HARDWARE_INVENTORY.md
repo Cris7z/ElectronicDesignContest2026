@@ -26,8 +26,8 @@
 | E-04 | `D:\BaiduNetdiskDownload\WHEELTEC C07A核心板(Ti-MSPM0G3507)附送资料` | C07A、S27F/S28A、D103A/TB6612 的厂家资料包。 |
 | E-05 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料` | D36A 厂家资料包。 |
 | E-06 | `D:\BaiduNetdiskDownload\【正点原子】DNK230D开发板` | 正点原子 DNK230D 板级资料包。 |
-| E-07 | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\Screenshot_20260729_113124_com_taobao_taobao_TBMa.jpg` | 订单截图：可见“正点原子 K230D BOX 标配 + GC2093 摄像头”，状态为待发货。 |
-| E-08 | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\开源网址与地址.txt` | 现有开源资料入口。 |
+| E-07 | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\113dea6ebc231725c9ab2edf696659af_720.png` 与 `tb_image_share_*.png` | 采购/产品截图：01Studio CanMV K230 套件、球杆传动件“带编码器步进电机版本 + 双路步进电机驱动”、LF04、底盘等。仅作为套件证据。 |
+| E-08 | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\开源网址与地址.txt` | 现有开源资料入口；其中正点原子 K230 URL 已排除，Yahboom 灰度链接仅作候选来源。 |
 
 ## 3. 硬件总清单
 
@@ -45,7 +45,7 @@
 | H-SENSOR-01 | CD4051 八路模拟灰度模块 | `CURRENT_INSTALLED` | 当前主循迹传感器。 | 基线记录：5 V，AD2/AD1/AD0/OUT 至 MSPM0；黑线高 ADC。 | 当前循迹边界内；地址逻辑、电压裕量和建立时间仍待测。 |
 | H-SENSOR-02 | HiWonder LineFollower_8CH / LF04 | `REMOVED` | 旧/备选循迹传感器。 | 与已占用的 U3 灰度线束不兼容。 | 不进入当前循迹接线或代码。 |
 | H-MOTION-04 | D36A V1.1 步进电机驱动器 | `FUTURE_CONFIRMED` | 球杆执行器的 `STEP/DIR/EN` 驱动。 | 用户依据实物正反面照片于 2026-07-31 确认 V1.1；厂家资料说明 V1.1 相对 V1.0 增加输入 ESD 与电源 TVS。 | 仅整理资料；拨码档位、电机额定电流和台架安全态待确认。 |
-| H-MOTION-05 | 42 型步进电机 + MS42CG 编码器 | `FUTURE_CONFIRMED` | 球杆角度闭环。 | 精确型号、方向、A/B/PWM 参数待实测。 | 仅整理资料；编码器必须按 3.3 V 约束复核。 |
+| H-MOTION-05 | 带编码器的 42 型步进电机 | `FUTURE_CONFIRMED` | 球杆角度闭环。 | 采购图明确写“带编码器步进电机版本”；**MS42CG 名称尚未由实物标签或厂家资料确认**。 | 仅整理资料；精确型号、接口、电平、方向、编码器 A/B/PWM 参数待实测。 |
 | H-MECH-01 | 32 cm × 24 cm 三轮差速底盘 | `CURRENT_INSTALLED` | 当前车体。 | 几何边界和实际轮距待最终实测。 | 当前循迹边界内。 |
 | H-MECH-02 | 25 cm PPR 管、约 1 cm 钢球、铰链与传动 | `FUTURE_CONFIRMED` | H 题球杆机械系统。 | 机构尺寸和装配状态待记录。 | 仅做资料与机械清单，不做控制实现。 |
 | H-VISION-01 | 01Studio CanMV K230 | `FUTURE_CONFIRMED` | 后续球检测与图传。 | 用户于 2026-07-31 确认使用 01Studio；先前正点原子订单截图不作为最终选型依据。 | 后续只按 01Studio 对应资料整理；不写 K230 代码。 |
