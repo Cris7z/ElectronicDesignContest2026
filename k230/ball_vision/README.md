@@ -14,6 +14,13 @@
 rtsp://192.168.4.1:8554/ball
 ```
 
+### 首次图传探针
+
+先部署 `rtsp_probe.py`、`rtsp_writeback.py` 和
+`rtsp_probe_config_example.py`。后者复制为不提交的
+`private_rtsp_config.py` 并设置 WPA2 密码。探针只采集、叠字并输出
+H.264 RTSP，**不依赖模型或标定**；它成功后再部署 `main.py`。
+
 ## 主机工具
 
 - `host/snapshot_board.ps1`：从 CanMV 盘或 IDE 导出的目录复制脚本/模型/配置并生成 SHA-256 清单。

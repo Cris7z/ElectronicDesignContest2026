@@ -54,6 +54,7 @@
 # Stage 6 K230 private / generated assets.  Commit source, example config,
 # test summaries and hashes only.
 /k230/ball_vision/private_config.py
+/k230/ball_vision/private_rtsp_config.py
 /k230/ball_vision/calibration.json
 /k230/ball_vision/models/
 /k230/ball_vision/datasets/

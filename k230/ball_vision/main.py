@@ -90,22 +90,18 @@ def _load_calibration(path):
 
 
 def _start_access_point(config):
+    if not hasattr(network, "get_dev_list") or "w1" not in network.get_dev_list():
+        raise RuntimeError("K230 Wi-Fi AP device w1 is unavailable")
     ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    choices = (
-        {"ssid": config["ap_ssid"], "password": config["ap_password"], "channel": config["ap_channel"]},
-        {"ssid": config["ap_ssid"], "key": config["ap_password"], "channel": config["ap_channel"]},
-        {"essid": config["ap_ssid"], "password": config["ap_password"]},
-    )
-    for settings in choices:
-        try:
-            ap.config(**settings)
-            break
-        except BaseException:
-            continue
+    if ap.config(ssid=config["ap_ssid"], key=config["ap_password"]) is False:
+        raise RuntimeError("K230 Wi-Fi AP configuration failed")
+    if hasattr(network, "set_default_dev") and network.set_default_dev("w1") is False:
+        raise RuntimeError("K230 Wi-Fi AP default-device selection failed")
     deadline = time.ticks_add(time.ticks_ms(), 5000)
     while ap.ifconfig()[0] == "0.0.0.0" and time.ticks_diff(deadline, time.ticks_ms()) > 0:
         time.sleep_ms(100)
+    if ap.ifconfig()[0] == "0.0.0.0":
+        raise RuntimeError("K230 Wi-Fi AP did not obtain an address")
     print("AP_READY", ap.ifconfig()[0], config["ap_ssid"])
     return ap
 
