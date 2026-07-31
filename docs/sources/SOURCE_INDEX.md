@@ -6,10 +6,11 @@
 
 | ID | 来源 | 类型 / 版本 | 原始位置 | 状态 | 对应整理文档 | 备注 |
 |---|---|---|---|---|---|---|
-| S-C07-01 | WHEELTEC C07A 厂家资料包 | 本地资料包 | `D:\BaiduNetdiskDownload\WHEELTEC C07A核心板(Ti-MSPM0G3507)附送资料` | 待分批阅读 | 待建 | 资料包体积大；以实物 C07A 版本确认后选择对应原理图。 |
-| S-C07-02 | S27F 底板原理图 | PDF | `...\7.底板相关资料\2.S27F底板资料\1.S27F底板原理图.pdf` | 待阅读 | 待建 | S27F 已由用户确认。 |
-| S-C07-03 | C07A 搭配 S27F 底板资源分配表 | PDF，2026-07-14 | `...\7.底板相关资料\2.S27F底板资料\2.C07A搭配S27F底板资源分配表(2026.07.14).pdf` | 待阅读 | 待建 | 后续只提取当前循迹已涉及资源。 |
-| S-C07-04 | D103A / TB6612FNG 原理图 | PDF | `...\2.D103A_TB6612精简版模块资料\1.TB6612FNG模块原理图（D103A）.pdf` | 待阅读 | 待建 | 左右轮映射以已关闭的 Q-002 为准。 |
+| S-C07-01 | WHEELTEC C07A 厂家资料包 | 本地资料包 | `D:\BaiduNetdiskDownload\WHEELTEC C07A核心板(Ti-MSPM0G3507)附送资料` | 分批阅读中 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 当前只整理纯循迹相关内容。 |
+| S-C07-02 | S27F 底板原理图 | PDF | `...\7.底板相关资料\2.S27F底板资料\1.S27F底板原理图.pdf` | 已阅读 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | S27F 已由用户确认。 |
+| S-C07-03 | C07A 搭配 S27F 底板资源分配表 | PDF，2026-07-14 | `...\7.底板相关资料\2.S27F底板资料\2.C07A搭配S27F底板资源分配表(2026.07.14).pdf` | 已阅读 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 只提取当前循迹已涉及资源。 |
+| S-C07-04 | D103A / TB6612FNG 原理图 | PDF | `...\2.D103A_TB6612精简版模块资料\1.TB6612FNG模块原理图（D103A）.pdf` | 已阅读 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 左右轮映射以已关闭的 Q-002 为准。 |
+| S-C07-05 | C07A 核心板 V1.0 / V1.1 原理图及更新记录 | PDF / TXT / PNG | `...\3.原理图\C07A核心板原理图_V1.0（MSPM0G3507）.pdf`、`...V1.1...pdf`、`C07A硬件更新内容记录.txt` | 已阅读版本差异 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 核心板已由两个底部按键与厂商识别图确认是 V1.1。 |
 | S-D36-01 | D36A 驱动用户手册 | PDF，V1.5，2026-06-17 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\1.用户手册与使用教程\D36A驱动用户手册_V1.5_2026.6.17.pdf` | 已阅读相关页 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | 接口、拨码、安全注意事项。 |
 | S-D36-02 | D36A V1.1 原理图 | PDF，V1.1，2026-04-20 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\3.原理图\D36A双路步进电机驱动模块_V1.1(2026.04.20).pdf` | 已阅读相关页 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | 后续网络表复核的原始来源。 |
 | S-D36-03 | D36A 版本说明与识别图 | TXT / PNG，V1.1 资料包 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\3.原理图` | 已阅读 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | V1.1 的 ESD / TVS 差异与丝印位置。 |
