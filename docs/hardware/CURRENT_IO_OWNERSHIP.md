@@ -4,7 +4,7 @@
 
 ## 0. 目标封装与显示接口边界
 
-- 当前 SysConfig 固定为 `MSPM0G3507` / `LQFP-48(PT)`，且不再绑定 LaunchPad 板级配置；这是 C07A V1.1 实物对应的可编辑封装。
+- 当前 SysConfig 固定为 `MSPM0G3507` / `LQFP-64(PM)`，并保留 `LP_MSPM0G3507` LaunchPad 板级绑定；它与用户确认的可运行 `c07a-line-tracker-preferred-20260731` 基线逐文件一致。除非新的实物证据表明冲突，不得改为其他封装或移除板级绑定。
 - 已接入的外接四针 I2C OLED 使用 `PA0` / `PA1`；这两个引脚保持 `OWNED_UNUSED_FUNCTION`，不能分给后续控制器。
 - 原四线 OLED 接口使用 `PA28`（SCLK）、`PA31`（SDIN）、`PB14`（RST）和 `PB15`（DC），是 SPI 类显示接口而非 I2C。它们当前没有进入纯循迹 SysConfig，也不因“当前未用”成为可随意复用的未来 IO；若要恢复或改接该接口，必须先核验原接插件和目标屏的电平、协议与原理图网络。
 
