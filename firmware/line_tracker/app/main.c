@@ -1,11 +1,13 @@
 /*
  * C07A line_tracker: the deliberately small first-stage vehicle program.
  *
- * Scope: BLS -> eight-channel CD4051 scan -> weighted PD -> TB6612.
- * Not included: lap counting, finish-line logic, MPU6050, K230, beam control,
- * OLED refresh and automatic Flash calibration.
+ * Scope: BLS -> eight-channel CD4051 scan -> weighted PD -> TB6612, plus the
+ * H-R02 one-lap encoder monitor and the already-wired SSD1306 status display.
+ * Not included: MPU6050, K230, beam control or automatic Flash calibration.
  */
+#include "lap_monitor.h"
 #include "line_tracker.h"
+#include "line_tracker_display.h"
 #include "wheel_speed_pi.h"
 
 #include "h2026_bsp.h"
@@ -29,6 +31,17 @@
 #define WHEEL_SHADOW_ENABLE_THRESHOLD 0.100f
 /* A/B: retain speed-P measurement/diagnostics, but do not inject it into PWM. */
 #define WHEEL_SHADOW_APPLY_CORRECTION false
+
+/* H-R02: first ground run stopped at the final semicircle apex with the
+ * geometric 6.1416 m value; use the resulting 7.040 m encoder target. */
+#define H_R02_LAP_DISTANCE_M 7.0400f
+#define H_R02_APPROACH_DISTANCE_M 0.1500f
+#define H_R02_APPROACH_DUTY_LIMIT 0.1200f
+#define H_R02_MISSION_TIMEOUT_MS 20000U
+#define H_R02_LEFT_METERS_PER_COUNT 0.0001561454f
+#define H_R02_RIGHT_METERS_PER_COUNT 0.0001659948f
+#define H_R02_LEFT_FORWARD_SIGN (-1)
+#define H_R02_RIGHT_FORWARD_SIGN 1
 
 /* All values below are measured on the installed 2026-07-30 vehicle. */
 static const line_tracker_config_t k_config = {
@@ -73,7 +86,8 @@ static const line_tracker_config_t k_config = {
     .yaw_gain_full_weight = 4.0f,
     .edge_blend_start_weight = 5.0f,
     .edge_blend_full_weight = 7.0f,
-    .steering_polarity = -1.0f,     /* Reversed after the 2026-07-31 chassis test. */
+    /* Ground test: black line offset must produce a turn back toward the line. */
+    .steering_polarity = 1.0f,
     .duty_limit = 0.5175f
 };
 
@@ -86,6 +100,16 @@ static const wheel_speed_pi_config_t k_wheel_speed_shadow_config = {
     .integral_limit = WHEEL_SHADOW_INTEGRAL_LIMIT,
     .correction_limit = WHEEL_SHADOW_CORRECTION_LIMIT,
     .enable_threshold = WHEEL_SHADOW_ENABLE_THRESHOLD
+};
+
+static const lap_monitor_config_t k_lap_monitor_config = {
+    .target_distance_m = H_R02_LAP_DISTANCE_M,
+    .approach_distance_m = H_R02_APPROACH_DISTANCE_M,
+    .left_meters_per_count = H_R02_LEFT_METERS_PER_COUNT,
+    .right_meters_per_count = H_R02_RIGHT_METERS_PER_COUNT,
+    .left_forward_sign = H_R02_LEFT_FORWARD_SIGN,
+    .right_forward_sign = H_R02_RIGHT_FORWARD_SIGN,
+    .timeout_ms = H_R02_MISSION_TIMEOUT_MS
 };
 
 /* Intentionally visible in CCS/XDS110 Expressions during track tuning. */
@@ -108,8 +132,12 @@ volatile float g_line_tracker_shadow_right_measured;
 volatile float g_line_tracker_shadow_left_correction;
 volatile float g_line_tracker_shadow_right_correction;
 volatile bool g_line_tracker_shadow_updated;
+volatile uint32_t g_line_tracker_elapsed_ms;
+volatile float g_line_tracker_distance_m;
+volatile bool g_line_tracker_lap_approach_active;
 
 static line_tracker_t s_tracker;
+static lap_monitor_t s_lap_monitor;
 static uint32_t s_tick_overrun_baseline;
 static bool s_button_stable;
 static bool s_button_candidate;
@@ -138,6 +166,14 @@ static void clear_wheel_speed_shadow_output(void)
     g_line_tracker_shadow_left_correction = 0.0f;
     g_line_tracker_shadow_right_correction = 0.0f;
     g_line_tracker_shadow_updated = false;
+}
+
+static void update_lap_debug(void)
+{
+    g_line_tracker_elapsed_ms = s_lap_monitor.output.elapsed_ms;
+    g_line_tracker_distance_m = s_lap_monitor.output.distance_m;
+    g_line_tracker_lap_approach_active =
+        s_lap_monitor.output.approach_active;
 }
 
 /* Uses physical-forward encoder signs. This has no actuator side effect. */
@@ -221,6 +257,14 @@ static void apply_output(void)
     left_duty += g_line_tracker_shadow_left_correction;
     right_duty += g_line_tracker_shadow_right_correction;
 #endif
+    if (s_lap_monitor.output.approach_active) {
+        if (left_duty > H_R02_APPROACH_DUTY_LIMIT) {
+            left_duty = H_R02_APPROACH_DUTY_LIMIT;
+        }
+        if (right_duty > H_R02_APPROACH_DUTY_LIMIT) {
+            right_duty = H_R02_APPROACH_DUTY_LIMIT;
+        }
+    }
     left_duty = clampf(left_duty, -k_config.duty_limit, k_config.duty_limit);
     right_duty = clampf(right_duty, -k_config.duty_limit, k_config.duty_limit);
     if (left_duty > 0.0f && left_duty < LEFT_FORWARD_DUTY_FLOOR) {
@@ -256,6 +300,8 @@ int main(void)
 {
     uint32_t overrun_count = 0U;
     uint32_t tick = 0U;
+    h2026_bsp_encoder_snapshot_t encoder_snapshot;
+    bool lap_ready;
 
     g_line_tracker_bsp_ready = h2026_bsp_init();
     h2026_bsp_motor_coast();
@@ -263,17 +309,24 @@ int main(void)
     (void)line_tracker_init(&s_tracker, &k_config);
     (void)wheel_speed_pi_init(&s_wheel_speed_shadow,
                               &k_wheel_speed_shadow_config);
+    lap_ready = lap_monitor_init(&s_lap_monitor, &k_lap_monitor_config);
     clear_wheel_speed_shadow_output();
+    update_lap_debug();
+    line_tracker_display_init();
     s_button_stable = h2026_bsp_start_level();
     s_button_candidate = s_button_stable;
     (void)h2026_bsp_take_control_tick(&s_tick_overrun_baseline);
     g_line_tracker_tick_overruns = s_tick_overrun_baseline;
+    if (!lap_ready) {
+        line_tracker_force_fault(&s_tracker);
+    }
 
     for (;;) {
         h2026_bsp_line_sample_t frame;
         line_tracker_input_t input;
         bool start_event;
         bool stop_event;
+        bool lap_timeout;
         uint8_t index;
 
         if (!h2026_bsp_take_control_tick(&overrun_count)) {
@@ -293,9 +346,35 @@ int main(void)
             g_line_tracker_raw_adc[index] = frame.raw_adc[index];
         }
         update_button(&start_event, &stop_event);
+        h2026_bsp_encoder_snapshot(&encoder_snapshot);
+        if (start_event && (s_tracker.output.state == LINE_TRACKER_WAIT)) {
+            lap_monitor_start(&s_lap_monitor,
+                              encoder_snapshot.left_count,
+                              encoder_snapshot.right_count,
+                              h2026_bsp_millis());
+        }
+        lap_monitor_step(&s_lap_monitor,
+                         encoder_snapshot.left_count,
+                         encoder_snapshot.right_count,
+                         h2026_bsp_millis());
+        lap_timeout = (s_lap_monitor.output.state == LAP_MONITOR_TIMEOUT);
+        if (s_lap_monitor.output.state == LAP_MONITOR_COMPLETE) {
+            stop_event = true;
+        }
+        if (stop_event) {
+            lap_monitor_cancel(&s_lap_monitor);
+        }
         input.start_event = start_event;
         input.stop_event = stop_event;
         line_tracker_step(&s_tracker, &input);
+        if (lap_timeout) {
+            line_tracker_force_fault(&s_tracker);
+        }
+        if ((s_tracker.output.state != LINE_TRACKER_RUN) &&
+            (s_lap_monitor.output.state == LAP_MONITOR_RUNNING)) {
+            lap_monitor_cancel(&s_lap_monitor);
+        }
+        update_lap_debug();
         g_line_tracker_output = s_tracker.output;
         g_line_tracker_debug_p_duty = s_tracker.output.debug_p_duty;
         g_line_tracker_debug_d_duty = s_tracker.output.debug_d_duty;
@@ -306,5 +385,7 @@ int main(void)
         g_line_tracker_debug_edge_blend = s_tracker.output.debug_edge_blend;
         apply_output();
         update_led(tick);
+        line_tracker_display_service(s_tracker.output.state,
+                                     s_lap_monitor.output.elapsed_ms);
     }
 }

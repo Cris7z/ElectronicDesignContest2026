@@ -1,3 +1,6 @@
 Build/
+calibration_backups/
 sim/test_line_tracker
 sim/test_line_tracker.exe
+sim/test_lap_monitor
+sim/test_lap_monitor.exe

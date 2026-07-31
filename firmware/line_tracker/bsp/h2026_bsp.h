@@ -113,6 +113,13 @@ void h2026_bsp_led_set(bool on);
 void h2026_bsp_oled_write_command(uint8_t command);
 void h2026_bsp_oled_write_data(const uint8_t *data, size_t length);
 
+/**
+ * Start or poll a short non-blocking OLED I2C write. Returns true only when
+ * the pending transfer has completed; false never waits for I2C completion.
+ */
+bool h2026_bsp_oled_try_write_command(uint8_t command);
+bool h2026_bsp_oled_try_write_data(const uint8_t *data, size_t length);
+
 /** Blocking debug-UART write; never call it from an ISR. */
 void h2026_bsp_uart0_write(const uint8_t *data, size_t length);
 

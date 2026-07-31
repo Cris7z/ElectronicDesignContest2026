@@ -49,6 +49,7 @@ if (-not [regex]::IsMatch($linkerText, $pattern)) {
 
 $sources = @(
     $appPath,
+    (Join-Path $projectRoot 'app\line_tracker_display.c'),
     (Join-Path $sharedRoot 'bsp\h2026_bsp.c'),
     (Join-Path $OutputDirectory 'ti_msp_dl_config.c'),
     (Join-Path $sourceRoot 'ti\devices\msp\m0p\startup_system_files\ticlang\startup_mspm0g350x_ticlang.c')
@@ -58,6 +59,7 @@ if ($AppSource -ne 'app\main.c') {
 }
 $sources = @(
     (Join-Path $projectRoot 'core\line_tracker.c'),
+    (Join-Path $projectRoot 'core\lap_monitor.c'),
     (Join-Path $projectRoot 'core\wheel_speed_pi.c')
 ) + $sources
 $compileArgs = @(
