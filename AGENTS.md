@@ -43,8 +43,8 @@ When hardware changes, update this file, `硬件及接线清单.md`, the root
 
 | Function | MSPM0 resource | Hardware endpoint |
 |---|---|---|
-| Left chassis motor | PB3/TIMA1_CCP1 + PA16/PA17 | TB6612 B channel; firmware positive is remapped toward physical forward |
-| Right chassis motor | PB2/TIMA1_CCP0 + PA14/PA13 | TB6612 A channel; firmware positive is remapped toward physical forward |
+| Left chassis motor | PB2/TIMA1_CCP0 + PA14/PA13 | TB6612 A/PWMA channel; positive firmware duty is physical forward (re-measured 2026-07-31) |
+| Right chassis motor | PB3/TIMA1_CCP1 + PA16/PA17 | TB6612 B/PWMB channel; positive firmware duty is physical forward (re-measured 2026-07-31) |
 | Left wheel encoder A/B | PA25/PA26 | GPIO quadrature; physical-forward sign = -1 |
 | Right wheel encoder A/B | PB20/PB24 | GPIO quadrature; physical-forward sign = +1 |
 | I2C0 SDA/SCL | PA0/PA1 | MPU6050 (0x68) plus external OLED (0x3C) |

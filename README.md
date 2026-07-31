@@ -135,14 +135,14 @@ flowchart TD
 
 | 功能 | MSPM0 引脚/资源 | 对端与限制 |
 |---|---|---|
-| 左电机 | PB3 / TIMA1_CCP1，PA16 / PA17 | TB6612 B 路 PWMB、BIN1、BIN2 |
-| 右电机 | PB2 / TIMA1_CCP0，PA14 / PA13 | TB6612 A 路 PWMA、AIN1、AIN2 |
+| 左电机 | PB2 / TIMA1_CCP0，PA14 / PA13 | TB6612 A 路 PWMA、AIN1、AIN2（2026-07-31 重测） |
+| 右电机 | PB3 / TIMA1_CCP1，PA16 / PA17 | TB6612 B 路 PWMB、BIN1、BIN2（2026-07-31 重测） |
 | 左轮编码器 A/B | PA25 / PA26 | GPIO 中断软件正交 |
 | 右轮编码器 A/B | PB20 / PB24 | GPIO 中断软件正交 |
 | MPU6050 SDA/SCL/INT | PA0 / PA1 / PA7，H5 | 与外接 OLED 共用 I²C0；不与八路灰度共线 |
 | CD4051 灰度 AD2/AD1/AD0/OUT | PA12 / PA27 / PB16 / PB17 | U3 四线；OUT=ADC1_A1_4，LF04 当前拔除 |
 | 外接 OLED SDA/SCL | PA0 / PA1，I²C0 | 四针 SSD1306 兼容屏，默认 0x3C，VCC=3.3 V，不能接 H5 5 V |
-| 启动键 BLS | PA18 | 消抖；长按急停 |
+| 启动键 BLS | PA18 | 消抖；短按松手起跑，长按约 1 s 急停 |
 | 状态 LED | PB9 | 运行/故障指示 |
 | 5 ms 控制节拍 | TIMG7 | TIMA1 已给 TB6612 双路 PWM |
 | USB 调试 UART0 | PA10 TX / PA11 RX | 115200 |
