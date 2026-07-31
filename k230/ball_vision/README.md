@@ -16,10 +16,14 @@ rtsp://192.168.4.1:8554/ball
 
 ### 首次图传探针
 
-先部署 `rtsp_probe.py`、`rtsp_writeback.py` 和
-`rtsp_probe_config_example.py`。后者复制为不提交的
-`private_rtsp_config.py` 并设置 WPA2 密码。探针只采集、叠字并输出
-H.264 RTSP，**不依赖模型或标定**；它成功后再部署 `main.py`。
+首选 `rtsp_sensor_probe.py` + `rtsp_sensor_transport.py`：这是基于
+CanMV v1.8 官方 `rtsp_server.py` 的直接相机→YUV420SP→硬编码器→RTSP
+路径，先验证 AP 稳定性、H.264 码流与完整相机画面覆盖。部署时同时带上
+`rtsp_probe_config_example.py`，并复制为不提交的
+`private_rtsp_config.py` 设置 WPA2 密码。
+
+`rtsp_probe.py` + `rtsp_writeback.py` 保留为第二步方案：它从 Display
+writeback 取帧，因此只在确认需要把检测框和诊断叠加进图传时再启用。
 
 ## 主机工具
 
