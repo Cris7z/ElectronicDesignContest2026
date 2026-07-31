@@ -27,6 +27,8 @@
 #define WHEEL_SHADOW_INTEGRAL_LIMIT 0.040f
 #define WHEEL_SHADOW_CORRECTION_LIMIT 0.030f
 #define WHEEL_SHADOW_ENABLE_THRESHOLD 0.100f
+/* A/B: retain speed-P measurement/diagnostics, but do not inject it into PWM. */
+#define WHEEL_SHADOW_APPLY_CORRECTION false
 
 /* All values below are measured on the installed 2026-07-30 vehicle. */
 static const line_tracker_config_t k_config = {
@@ -208,8 +210,10 @@ static void apply_output(void)
     /* The correction is separately bounded to +/-3 % before this final
      * actuator clamp.  It is held across the four 5 ms ticks of one speed
      * measurement window. */
+#if WHEEL_SHADOW_APPLY_CORRECTION
     left_duty += g_line_tracker_shadow_left_correction;
     right_duty += g_line_tracker_shadow_right_correction;
+#endif
     left_duty = clampf(left_duty, -k_config.duty_limit, k_config.duty_limit);
     right_duty = clampf(right_duty, -k_config.duty_limit, k_config.duty_limit);
     if (left_duty > 0.0f && left_duty < LEFT_FORWARD_DUTY_FLOOR) {
