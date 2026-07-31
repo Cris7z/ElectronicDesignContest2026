@@ -3,6 +3,8 @@
 > 目的：将厂家资料、官方在线文档和赛题文件登记为可追溯来源；Git 只保存整理后的文字与表格，**不镜像**体积大的资料包或受版权保护的 PDF。
 >
 > 更新日期：2026-07-31。状态中的“已阅读”表示已提取与当前阶段有关的内容，并不代表所有页都已经完成逐页整理。
+>
+> 已入手的关键本地 PDF 的大小与 SHA-256 见 [`FILE_FINGERPRINTS.md`](FILE_FINGERPRINTS.md)。
 
 | ID | 来源 | 类型 / 版本 | 原始位置 | 状态 | 对应整理文档 | 备注 |
 |---|---|---|---|---|---|---|
@@ -11,6 +13,8 @@
 | S-C07-03 | C07A 搭配 S27F 底板资源分配表 | PDF，2026-07-14 | `...\7.底板相关资料\2.S27F底板资料\2.C07A搭配S27F底板资源分配表(2026.07.14).pdf` | 已阅读 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 只提取当前循迹已涉及资源。 |
 | S-C07-04 | D103A / TB6612FNG 原理图 | PDF | `...\2.D103A_TB6612精简版模块资料\1.TB6612FNG模块原理图（D103A）.pdf` | 已阅读 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 左右轮映射以已关闭的 Q-002 为准。 |
 | S-C07-05 | C07A 核心板 V1.0 / V1.1 原理图及更新记录 | PDF / TXT / PNG | `...\3.原理图\C07A核心板原理图_V1.0（MSPM0G3507）.pdf`、`...V1.1...pdf`、`C07A硬件更新内容记录.txt` | 已阅读版本差异 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 核心板已由两个底部按键与厂商识别图确认是 V1.1。 |
+| S-C07-06 | P03B 5 V / 3.3 V 稳压模块资料包入口 | TXT，百度网盘链接 | `...\底板所用其他模块资料包\1.P03B电源模块（12V转5V降压）资料包.txt` | 原件待补 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 本机没有该模块的原理图或参数资料，不能推定负载能力。 |
+| S-C07-07 | MPU6050 模块资料包入口及芯片手册 | TXT / PDF | `...\底板所用其他模块资料包\3.MPU6050模块资料包.txt`；`...\5.芯片数据手册\MPU6050` | 模块原件待补 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 芯片手册不能替代模块电路资料。 |
 | S-SENSOR-01 | Yahboom 八路灰度巡线模块页面 | 在线页面 | `https://www.yahboom.com/study_module/8-GS` | 候选来源，待实物核对 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 页面只有图像与下载入口，不能从中冻结当前 CD4051 的针序或电气参数。 |
 | S-D36-01 | D36A 驱动用户手册 | PDF，V1.5，2026-06-17 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\1.用户手册与使用教程\D36A驱动用户手册_V1.5_2026.6.17.pdf` | 已阅读相关页 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | 接口、拨码、安全注意事项。 |
 | S-D36-02 | D36A V1.1 原理图 | PDF，V1.1，2026-04-20 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\3.原理图\D36A双路步进电机驱动模块_V1.1(2026.04.20).pdf` | 已阅读相关页 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | 后续网络表复核的原始来源。 |
