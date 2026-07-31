@@ -10,13 +10,28 @@
 
 | 项目 | 结论 | 当前项目约束 |
 |---|---|---|
-| 板卡平台 | 01Studio CanMV K230。 | 不混用正点原子 DNK230D / K230D BOX 资料。 |
+| 板卡平台 | 01Studio CanMV K230 标准版；采购套件图为带 40Pin GPIO 的标准板型。 | 不混用正点原子 DNK230D / K230D BOX 资料，也不混用 CanMV K230 mini 的针脚表。 |
 | 当前循迹工程 | 不需要 K230。 | 不增加 K230 程序、串口协议、IO 定义或接线。 |
 | 未来用途 | 球检测、图像处理、图传相关能力。 | 具体算法与通信接口在赛题和整车方案冻结后另立阶段实施。 |
 | 相机 | 官方教程支持 GC2093，默认相机接口为 CSI2。 | 用户最终套装的相机型号、视场角、排线方向和安装方向必须实物记录。 |
 | 训练模型 | 官方教程对接 01Studio 在线训练平台。 | 不提交平台账号、Cookie、访问令牌、私有训练数据或未获授权的模型。 |
 
 采购套件图与 01Studio CanMV K230 品牌和板型相符，图中列出 Type-C 线、XH-1.25 转 2.54 的 4P 线、散热片、亚克力底板和 16 GB SD 卡。这些是套件配件记录，**不是**完整板卡规格或接口真值。
+
+## 1.1 标准版硬件资源
+
+官方产品参数的标准版记录如下；内存容量属于可选项，必须在到手后以实物标签/系统信息确认。
+
+| 项目 | 官方资料 | 当前约束 |
+|---|---|---|
+| 主控与算力 | K230 双 RISC-V 核：CPU1 1.6 GHz、CPU0 800 MHz；KPU 标称 6 TOPS 等效，支持 INT8/INT16。 | 仅作后续算法容量评估，不据此提前实现视觉业务。 |
+| 内存 | 1 GB 或 2 GB LPDDR4。 | **未确认实际容量**。 |
+| 存储 | MicroSD，官方标注最大支持 512 GB。 | 套件图显示附带 16 GB 卡；镜像版本另行记录。 |
+| 相机 | GC2093 标配，OV5647 可选；标准版支持 3 路 2-lane CSI 输入。 | 最终相机型号与装车方向待实物复核。 |
+| 网络与显示 | 板载 2.4 GHz Wi-Fi；支持 MIPI DSI、HDMI、CanMV IDE 显示。 | 当前不设计图传业务。 |
+| 外部扩展 | 40Pin GPIO（兼容树莓派排针）；XH-1.25 mm 4P 串口/I²C 接口。 | 当前不分配给 C07A 或其他外设。 |
+| 调试与供电 | Type-C 集成 IDE、调试、文件传输、供电；调试 UART 为 CPU1 UART3、CPU0 UART0。 | UART0/UART3 不得作为未来 C07A 通信串口。 |
+| 外形 | PCB 85 × 56 × 15 mm，官方标重 31 g。 | 用于后续机械安装预留，尚未实测。 |
 
 ## 2. 供电规则
 
@@ -40,6 +55,8 @@
 | UART3 | 终端占用 | 终端占用 | 禁止纳入 C07A 通信设计。 |
 
 将来如需与 MSPM0 通信，必须先确认两侧逻辑电平、交叉连接（TX→RX）、公共地、复位默认态、带宽和断线安全行为。官方 USB 转串口示例使用 3.3 V TTL；未完成电平核验前不得直连任何 5 V UART。
+
+官方 GPIO 教程同时明确：标准版 40Pin 上具有两路 5 V、两路 3.3 V 和八路 GND，通用 IO 电平为 3.3 V；禁止用超过 5 V 的电源给开发板供电。该表是板级能力说明，不构成允许从 P03B 给 K230 供电的结论。
 
 ## 4. 相机与视觉资料
 
@@ -67,6 +84,9 @@
 ## 7. 官方来源
 
 - [CanMV K230 在线教程首页](https://wiki.01studio.cc/docs/canmv_k230)
+- [产品参数](https://wiki.01studio.cc/docs/canmv_k230/intro/canmv_k230/)
+- [GPIO 介绍](https://wiki.01studio.cc/docs/canmv_k230/basic_examples/gpio_intro/)
+- [官方资源下载](https://wiki.01studio.cc/docs/canmv_k230/download/)
 - [供电说明](https://wiki.01studio.cc/docs/canmv_k230/getting_start/power_supply/)
 - [UART 教程](https://wiki.01studio.cc/docs/canmv_k230/basic_examples/uart/)
 - [相机与传感器教程](https://wiki.01studio.cc/docs/canmv_k230/machine_vision/camera/)

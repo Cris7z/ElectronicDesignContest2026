@@ -28,6 +28,9 @@
 | S-K230-04 | CanMV K230 Camera 教程 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/machine_vision/camera/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | CSI2、GC2093、传感器实例。 |
 | S-K230-05 | CanMV K230 在线训练模型教程 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/machine_vision/train/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | K230 模型导出和部署流程。 |
 | S-K230-06 | 01Studio 在线训练模型平台 | 在线服务 | `https://ai.01studio.cc` | 已登记 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | 不把账号、Cookie、密钥、私有数据或模型成品提交至 Git。 |
+| S-K230-07 | CanMV K230 产品参数 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/intro/canmv_k230/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | 标准版硬件资源、内存选项、相机、供电和尺寸。 |
+| S-K230-08 | CanMV K230 GPIO 介绍 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/basic_examples/gpio_intro/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | 40Pin、电源引脚和 GPIO 3.3 V 电平。 |
+| S-K230-09 | CanMV K230 资源下载 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/download/` | 已登记 | 待补原件 | 官方原理图、芯片手册、例程下载入口；后续下载时记录版本与 SHA-256。 |
 | S-PUR-01 | 项目采购/产品截图 | PNG | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\113dea6ebc231725c9ab2edf696659af_720.png` 及 `tb_image_share_*.png` | 已阅读 | 硬件清单、D36A/K230 文档 | 只证明购买套件标注和配件，不能代替实物丝印、原理图或额定参数。 |
 | S-H-01 | 2026 年赛题 H 题 PDF | PDF | `D:\X\ElectronicDesignContest2026\H题_车载平衡滚球运动控制系统.pdf` | **尚未阅读** | 阶段 3 待建 | 按重构计划，在硬件资料完成后逐页整理五个问题。 |
 
