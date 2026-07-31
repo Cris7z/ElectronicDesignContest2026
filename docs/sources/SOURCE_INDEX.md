@@ -34,7 +34,7 @@
 | S-K230-08 | CanMV K230 GPIO 介绍 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/basic_examples/gpio_intro/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | 40Pin、电源引脚和 GPIO 3.3 V 电平。 |
 | S-K230-09 | CanMV K230 资源下载 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/download/` | 已登记 | 待补原件 | 官方原理图、芯片手册、例程下载入口；后续下载时记录版本与 SHA-256。 |
 | S-PUR-01 | 项目采购/产品截图 | PNG | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\113dea6ebc231725c9ab2edf696659af_720.png` 及 `tb_image_share_*.png` | 已阅读 | 硬件清单、D36A/K230 文档 | 只证明购买套件标注和配件，不能代替实物丝印、原理图或额定参数。 |
-| S-H-01 | 2026 年赛题 H 题 PDF | PDF | `D:\X\ElectronicDesignContest2026\H题_车载平衡滚球运动控制系统.pdf` | **尚未阅读** | 阶段 3 待建 | 按重构计划，在硬件资料完成后逐页整理五个问题。 |
+| S-H-01 | 2026 年赛题 H 题 PDF | PDF，4 页 | `D:\X\ElectronicDesignContest2026\H题_车载平衡滚球运动控制系统.pdf` | **已逐页阅读** | [`../requirements/H2026_OFFICIAL_REQUIREMENTS.md`](../requirements/H2026_OFFICIAL_REQUIREMENTS.md) | 已逐页整理题面、8 项要求、五项核心测试、场地/摆杆硬约束与评分。 |
 
 ## 已排除的历史来源
 
