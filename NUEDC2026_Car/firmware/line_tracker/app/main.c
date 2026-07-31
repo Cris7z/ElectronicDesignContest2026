@@ -94,6 +94,12 @@ volatile uint32_t g_line_tracker_tick_overruns;
 volatile bool g_line_tracker_bsp_ready;
 volatile float g_line_tracker_applied_left_duty;
 volatile float g_line_tracker_applied_right_duty;
+volatile float g_line_tracker_debug_p_duty;
+volatile float g_line_tracker_debug_d_duty;
+volatile float g_line_tracker_debug_pd_target_yaw;
+volatile float g_line_tracker_debug_final_yaw;
+volatile float g_line_tracker_debug_base_duty;
+volatile float g_line_tracker_debug_edge_blend;
 volatile float g_line_tracker_shadow_left_target;
 volatile float g_line_tracker_shadow_right_target;
 volatile float g_line_tracker_shadow_left_measured;
@@ -290,6 +296,13 @@ int main(void)
         input.stop_event = stop_event;
         line_tracker_step(&s_tracker, &input);
         g_line_tracker_output = s_tracker.output;
+        g_line_tracker_debug_p_duty = s_tracker.output.debug_p_duty;
+        g_line_tracker_debug_d_duty = s_tracker.output.debug_d_duty;
+        g_line_tracker_debug_pd_target_yaw =
+            s_tracker.output.debug_pd_target_yaw;
+        g_line_tracker_debug_final_yaw = s_tracker.output.debug_final_yaw;
+        g_line_tracker_debug_base_duty = s_tracker.output.debug_base_duty;
+        g_line_tracker_debug_edge_blend = s_tracker.output.debug_edge_blend;
         apply_output();
         update_led(tick);
     }

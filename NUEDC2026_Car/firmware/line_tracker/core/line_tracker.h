@@ -75,6 +75,13 @@ typedef struct {
     float error;
     float left_duty;
     float right_duty;
+    /* Read-only transition diagnostics; they do not feed control. */
+    float debug_p_duty;
+    float debug_d_duty;
+    float debug_pd_target_yaw;
+    float debug_final_yaw;
+    float debug_base_duty;
+    float debug_edge_blend;
 } line_tracker_output_t;
 
 typedef struct {
