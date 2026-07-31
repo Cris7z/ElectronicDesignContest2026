@@ -17,6 +17,11 @@ import network
 try:
     _SOURCE_DIR = os.path.dirname(__file__)
 except NameError:
+    _SOURCE_DIR = ""
+# The CanMV VS Code extension may set ``__file__`` to its REPL wrapper rather
+# than the board path.  The deploy directory is intentionally fixed for this
+# probe, so keep sibling imports independent of that launch detail.
+if not _SOURCE_DIR or not _SOURCE_DIR.startswith("/sdcard/"):
     _SOURCE_DIR = "/sdcard/ball_vision_rtsp_probe"
 if _SOURCE_DIR and _SOURCE_DIR not in sys.path:
     sys.path.append(_SOURCE_DIR)
