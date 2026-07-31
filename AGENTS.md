@@ -2,10 +2,10 @@
 
 ## 当前边界
 
-- 当前唯一允许修改的业务代码：`firmware/line_tracker/`。
-- 阶段 1 的 H-R02 功能已冻结；停车里程的赛前微调不阻塞后续准备。Q-005、Q-006、Q-008 的台架门槛关闭前，仍不得建立 STM32F103RCT6、D36A、MS42CG、K230 或跨板通信运行代码，也不得改变现有接线、SysConfig、轮电机映射或循迹 PD 核心。
-- 不得加入三板架构之外的控制器、传感器或通信方案；不得提前加入 STM32F103RCT6、D36A、MS42CG、K230、摄像头/图传或球杆控制。
-- 后续三板架构已选择 C07A（循迹/UI）+ STM32F103RCT6（滚球实时控制）+ 01Studio CanMV K230（视觉/图传）；在 Q-005、Q-006、Q-008 的台架门槛关闭前，不得据此分配正式 IO 或建立未来控制代码。
+- 当前允许修改的业务代码：`firmware/line_tracker/` 与 `firmware/ball_beam/stm32f103_rct6/`。
+- 阶段 1 的 H-R02 功能已冻结；停车里程的赛前微调不阻塞后续准备。用户于 2026-08-01 明确解除 Q-005、Q-006、Q-008 对现有三板功能移植的阻塞：允许 RCT6 的滚球实时控制、D36A、MS42CG 和 K230 单向 UART 接收运行代码。不得改变既有接线、C07A SysConfig、轮电机映射或循迹 PD 核心。
+- 不得加入已选三板架构之外的控制器、传感器或通信方案；K230 继续只负责球位置视觉与图传，C07A 不与 STM32 建立通信。
+- 三板架构为 C07A（循迹/UI）+ STM32F103RCT6（滚球实时控制）+ 01Studio CanMV K230（视觉/图传）。RCT6 的正式 IO 仅限 `CURRENT_WIRING.md` 与 `CURRENT_IO_OWNERSHIP.md` 已记录的现有实物线束。
 - 接线与 IO 的唯一入口是 `docs/hardware/CURRENT_WIRING.md` 和 `docs/hardware/CURRENT_IO_OWNERSHIP.md`。
 - 已经接好的线束按实物逐根核对；不存在供电、电平、共地、引脚/定时器复用、调试口或默认使能冲突时保持原样，不为整理线束而重接。
 - 发生实物、原理图、代码或接线冲突时，停止相关修改，更新 `docs/decisions/OPEN_QUESTIONS.md` 并询问用户。

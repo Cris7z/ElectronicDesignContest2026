@@ -48,7 +48,20 @@
 
 | 硬件/功能 | 当前占用 | 规则 |
 |---|---|---|
-| D36A / MS42CG | 无 | 未来硬件；D36A 安全台架和 Q-005 关闭前不得分配。 |
-| 01Studio CanMV K230 / 摄像头 / 图传 | 无 | 未来硬件；供电、接口和实际版本确认后另建表。 |
-| STM32F103RCT6 | 无 | 已确认的后续滚球实时控制器；见 Q-008。没有正式 C07A 或 STM32 引脚分配。 |
+| D36A / MS42CG | RCT6 专属 | 现有滚球台架线束见第 4 节；不占用 C07A IO。 |
+| 01Studio CanMV K230 / 摄像头 / 图传 | RCT6 PA3 单向接收 | K230 TX1→PA3/USART2_RX；不接 C07A。 |
+| STM32F103RCT6 | RCT6 专属 | 当前滚球实时控制器；无正式 C07A↔STM32 引脚分配。 |
 | 圈数、终点、赛题计时显示 | 无新增 IO | 当前代码基底不实现；后续经 H-R02 单独切片审批。 |
+
+## 4. STM32F103RCT6 滚球台架 IO
+
+| 引脚 | 外设/模式 | 对端 | 所有权 |
+|---|---|---|---|
+| PB6 | TIM4_CH1 | D36A ST1 | `OWNED` |
+| PB8 | GPIO 输出 | D36A EN1 | `OWNED` |
+| PB9 | GPIO 输出 | D36A DIR1 | `OWNED` |
+| PA0 / PA1 | TIM2_CH1 / CH2 | MS42CG A / B | `OWNED` |
+| PA6 | TIM3_CH1 输入捕获 | MS42CG PWM | `OWNED` |
+| PA12 | EXTI12 | MS42CG Z | `OWNED` |
+| PA3 | USART2_RX | K230 TX1 | `OWNED` |
+| PA9 / PA10 | USART1_TX / RX | 板载 CH340 | `RESERVED_DEBUG` |
