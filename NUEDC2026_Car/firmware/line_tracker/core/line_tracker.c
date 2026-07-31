@@ -87,6 +87,7 @@ static bool config_valid(const line_tracker_config_t *config)
          (config->error_filter_alpha > 1.0f) ||
         (config->pid_d_filter_alpha <= 0.0f) ||
         (config->pid_d_filter_alpha > 1.0f) ||
+        (config->yaw_slew_step <= 0.0f) ||
         (config->yaw_gain_min <= 0.0f) ||
         (config->yaw_gain_min > 1.0f) ||
         (config->yaw_gain_full_weight <= config->yaw_gain_start_weight) ||
@@ -122,6 +123,7 @@ void line_tracker_reset(line_tracker_t *tracker)
     tracker->integral_error = 0.0f;
     tracker->last_seen_error = 0.0f;
     tracker->ramped_base_duty = tracker->config.speed_start_duty;
+    tracker->ramped_yaw_duty = 0.0f;
     tracker->speed_weight_lpf = 0.0f;
     tracker->center_gap_ticks = 0U;
     tracker->lost_candidate_ticks = 0U;
@@ -214,6 +216,7 @@ static void begin_run(line_tracker_t *tracker)
     tracker->integral_error = 0.0f;
     tracker->last_seen_error = 0.0f;
     tracker->ramped_base_duty = tracker->config.speed_start_duty;
+    tracker->ramped_yaw_duty = 0.0f;
     tracker->speed_weight_lpf = 0.0f;
     tracker->center_gap_ticks = 0U;
     tracker->lost_candidate_ticks = 0U;
@@ -288,6 +291,7 @@ static void run_controller(line_tracker_t *tracker,
         tracker->speed_filter_seeded = false;
         tracker->lost_candidate_ticks = 0U;
         tracker->ramped_base_duty = tracker->config.speed_min_duty;
+        tracker->ramped_yaw_duty = 0.0f;
         tracker->output.left_duty = tracker->config.speed_min_duty;
         tracker->output.right_duty = tracker->config.speed_min_duty;
         return;
@@ -440,6 +444,10 @@ static void run_controller(line_tracker_t *tracker,
     yaw_duty = clampf(yaw_duty, -tracker->config.yaw_limit_duty,
                        tracker->config.yaw_limit_duty);
     yaw_duty *= tracker->config.steering_polarity;
+    tracker->ramped_yaw_duty = ramp_toward(
+        tracker->ramped_yaw_duty, yaw_duty,
+        tracker->config.yaw_slew_step, tracker->config.yaw_slew_step);
+    yaw_duty = tracker->ramped_yaw_duty;
     tracker->output.debug_final_yaw = yaw_duty;
     tracker->output.left_duty = clampf(requested_base - yaw_duty,
                                        -tracker->config.duty_limit,

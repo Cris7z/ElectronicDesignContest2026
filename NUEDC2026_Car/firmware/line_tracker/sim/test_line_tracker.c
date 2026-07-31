@@ -34,6 +34,7 @@ static const line_tracker_config_t k_config = {
     .error_filter_alpha = 0.60f,
     .pid_d_filter_alpha = 0.35f,
     .yaw_limit_duty = 0.45f,
+    .yaw_slew_step = 0.45f,
     .edge_yaw_duty = 0.30f,
     .yaw_gain_min = 0.60f,
     .yaw_gain_start_weight = 1.0f,
@@ -396,6 +397,29 @@ static void test_smooth_gain_and_edge_blend(void)
     assert(wheel_difference(&tracker) < 0.31f);
 }
 
+static void test_final_yaw_slew_limits_edge_transition(void)
+{
+    line_tracker_t tracker;
+    line_tracker_config_t config = k_config;
+    line_tracker_input_t centre = input_with_black(3U);
+    line_tracker_input_t edge = input_with_black(0U);
+    float previous_yaw;
+
+    config.pid_p_yaw = 0.0f;
+    config.pid_d_yaw = 0.0f;
+    config.yaw_slew_step = 0.08f;
+    assert(line_tracker_init(&tracker, &config));
+    centre.start_event = true;
+    line_tracker_step(&tracker, &centre);
+    centre.start_event = false;
+    line_tracker_step(&tracker, &centre);
+    previous_yaw = tracker.output.debug_final_yaw;
+    line_tracker_step(&tracker, &edge);
+    assert(fabsf(tracker.output.debug_final_yaw - previous_yaw) <=
+           config.yaw_slew_step + 0.0001f);
+    assert(fabsf(tracker.output.debug_final_yaw) > 0.079f);
+}
+
 int main(void)
 {
     test_pd_direction_and_ramp();
@@ -413,6 +437,7 @@ int main(void)
     test_centroid_threshold_is_soft();
     test_independent_limit_keeps_inner_wheel_forward();
     test_smooth_gain_and_edge_blend();
+    test_final_yaw_slew_limits_edge_transition();
     puts("line_tracker host tests: PASS");
     return 0;
 }
