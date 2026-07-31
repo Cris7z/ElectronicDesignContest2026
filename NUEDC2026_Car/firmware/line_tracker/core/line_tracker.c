@@ -87,6 +87,8 @@ static bool config_valid(const line_tracker_config_t *config)
          (config->error_filter_alpha > 1.0f) ||
         (config->pid_d_filter_alpha <= 0.0f) ||
         (config->pid_d_filter_alpha > 1.0f) ||
+        (config->pid_d_limit_duty <= 0.0f) ||
+        (config->pid_d_limit_duty > config->yaw_limit_duty) ||
         (config->yaw_gain_min <= 0.0f) ||
         (config->yaw_gain_min > 1.0f) ||
         (config->yaw_gain_full_weight <= config->yaw_gain_start_weight) ||
@@ -249,9 +251,21 @@ static void run_controller(line_tracker_t *tracker,
     float gain_weight;
     float edge_blend;
     float raw_derivative;
+    float p_duty;
+    float d_duty_unclamped;
+    float d_duty;
+    float integral_duty;
     float yaw_duty;
     float unclamped_yaw_duty;
     float requested_base;
+
+    tracker->output.pid_p_duty = 0.0f;
+    tracker->output.pid_d_duty = 0.0f;
+    tracker->output.pid_d_limited = false;
+    tracker->output.yaw_pd_duty = 0.0f;
+    tracker->output.yaw_final_duty = 0.0f;
+    tracker->output.base_duty = 0.0f;
+    tracker->output.edge_blend = 0.0f;
 
     if (input->line_valid &&
         (tracker->output.black_count > tracker->config.max_track_black_count)) {
@@ -370,10 +384,18 @@ static void run_controller(line_tracker_t *tracker,
         tracker->filtered_derivative += tracker->config.pid_d_filter_alpha *
             (raw_derivative - tracker->filtered_derivative);
     }
-    unclamped_yaw_duty = 0.01f *
-        ((tracker->config.pid_p_yaw * yaw_error) +
-         (tracker->config.pid_i_yaw * tracker->integral_error) +
-         (tracker->config.pid_d_yaw * tracker->filtered_derivative));
+    p_duty = 0.01f * tracker->config.pid_p_yaw * yaw_error;
+    integral_duty = 0.01f * tracker->config.pid_i_yaw *
+        tracker->integral_error;
+    d_duty_unclamped = 0.01f * tracker->config.pid_d_yaw *
+        tracker->filtered_derivative;
+    d_duty = clampf(d_duty_unclamped, -tracker->config.pid_d_limit_duty,
+                    tracker->config.pid_d_limit_duty);
+    tracker->output.pid_p_duty = p_duty;
+    tracker->output.pid_d_duty = d_duty;
+    tracker->output.pid_d_limited = d_duty != d_duty_unclamped;
+    unclamped_yaw_duty = p_duty + integral_duty + d_duty;
+    tracker->output.yaw_pd_duty = unclamped_yaw_duty;
     yaw_duty = unclamped_yaw_duty;
     yaw_duty = clampf(yaw_duty, -tracker->config.yaw_limit_duty,
                        tracker->config.yaw_limit_duty);
@@ -410,20 +432,24 @@ static void run_controller(line_tracker_t *tracker,
         tracker->ramped_base_duty, requested_base,
         tracker->config.speed_accel_step, tracker->config.speed_decel_step);
     requested_base = tracker->ramped_base_duty;
+    tracker->output.base_duty = requested_base;
     edge_weight = maxf(absf(raw_yaw_error), absf(yaw_error));
     if ((tracker->output.black_mask & 0x01U) != 0U) {
         edge_blend = smoothstep(edge_weight,
                                 tracker->config.edge_blend_start_weight,
                                 tracker->config.edge_blend_full_weight);
+        tracker->output.edge_blend = edge_blend;
         yaw_duty += edge_blend * (tracker->config.edge_yaw_duty - yaw_duty);
     } else if ((tracker->output.black_mask & 0x80U) != 0U) {
         edge_blend = smoothstep(edge_weight,
                                 tracker->config.edge_blend_start_weight,
                                 tracker->config.edge_blend_full_weight);
+        tracker->output.edge_blend = edge_blend;
         yaw_duty += edge_blend * (-tracker->config.edge_yaw_duty - yaw_duty);
     }
     yaw_duty = clampf(yaw_duty, -tracker->config.yaw_limit_duty,
                        tracker->config.yaw_limit_duty);
+    tracker->output.yaw_final_duty = yaw_duty;
     yaw_duty *= tracker->config.steering_polarity;
     tracker->output.left_duty = clampf(requested_base - yaw_duty,
                                        -tracker->config.duty_limit,
