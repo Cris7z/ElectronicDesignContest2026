@@ -15,8 +15,16 @@ import uctypes
 import multimedia as mm
 from media.media import MediaManager
 from media.sensor import Sensor
-from media.vencoder import Encoder, ChnAttrStr, StreamData
-from mpp import ALIGN_UP, VENC_DEV_ID, VIDEO_ENCODE_MOD_ID
+# CanMV's v1.8 public RTSP example exports these helpers from
+# ``media.vencoder``.  They are not importable from the ``mpp`` package.
+from media.vencoder import (
+    ALIGN_UP,
+    VENC_DEV_ID,
+    VIDEO_ENCODE_MOD_ID,
+    ChnAttrStr,
+    Encoder,
+    StreamData,
+)
 
 
 class SensorRtspServer:
