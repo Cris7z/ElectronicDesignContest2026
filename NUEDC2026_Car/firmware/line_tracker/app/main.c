@@ -63,7 +63,6 @@ static const line_tracker_config_t k_config = {
     .pid_integral_limit = 5.0f,
     .error_filter_alpha = 0.60f,   /* main's line-position low-pass. */
     .pid_d_filter_alpha = 0.35f,   /* Same D low-pass structure as main. */
-    .pid_d_limit_duty = 0.100f,    /* Limit transition kick; keep Kd=125. */
     .yaw_limit_duty = 0.450f,
     .edge_yaw_duty = 0.300f,        /* edge yaw: 60 % -> 30 % */
     .yaw_gain_min = 0.90f,

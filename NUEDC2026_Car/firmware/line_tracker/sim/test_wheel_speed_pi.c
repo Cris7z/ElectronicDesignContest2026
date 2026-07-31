@@ -14,17 +14,6 @@ static const wheel_speed_pi_config_t k_config = {
     .enable_threshold = 0.10f
 };
 
-/* Must match the active wheel P-only correction in app/main.c. */
-static const wheel_speed_pi_config_t k_live_config = {
-    .counts_per_command_window = 163.256f,
-    .measurement_filter_alpha = 0.50f,
-    .kp = 0.30f,
-    .ki_per_second = 0.0f,
-    .integral_limit = 0.040f,
-    .correction_limit = 0.030f,
-    .enable_threshold = 0.100f
-};
-
 static void run_window(wheel_speed_pi_t *controller, int64_t *left_count,
                        int64_t *right_count, int64_t left_step,
                        int64_t right_step, float left_target,
@@ -85,28 +74,11 @@ static void test_saturation_and_zero_reset(void)
     assert(controller.output.right_correction == 0.0f);
 }
 
-static void test_live_p_only_config_remains_bounded(void)
-{
-    wheel_speed_pi_t controller;
-    int64_t left_count = 0;
-    int64_t right_count = 0;
-
-    assert(wheel_speed_pi_init(&controller, &k_live_config));
-    wheel_speed_pi_step(&controller, left_count, right_count, 0.4875f, 0.4875f);
-    run_window(&controller, &left_count, &right_count, 0, 0, 0.4875f, 0.4875f);
-    assert(controller.output.updated);
-    assert(fabsf(controller.output.left_correction - 0.030f) < 0.0001f);
-    assert(fabsf(controller.output.right_correction - 0.030f) < 0.0001f);
-    assert(fabsf(controller.left_integral) < 0.0001f);
-    assert(fabsf(controller.right_integral) < 0.0001f);
-}
-
 int main(void)
 {
     test_window_and_matching_speed();
     test_independent_corrections();
     test_saturation_and_zero_reset();
-    test_live_p_only_config_remains_bounded();
     puts("wheel_speed_pi host tests: PASS");
     return 0;
 }

@@ -46,8 +46,6 @@ typedef struct {
     float error_filter_alpha;
     /* First-order low-pass for measurement derivative, 0 < alpha <= 1. */
     float pid_d_filter_alpha;
-    /* Absolute D contribution after it is converted to signed PWM duty. */
-    float pid_d_limit_duty;
     float yaw_limit_duty;
     float edge_yaw_duty;
     float yaw_gain_min;
@@ -75,14 +73,6 @@ typedef struct {
     bool cross_mode;
     uint16_t lost_ticks;
     float error;
-    /* CCS/host diagnostics: all yaw duties are before steering polarity. */
-    float pid_p_duty;
-    float pid_d_duty;
-    bool pid_d_limited;
-    float yaw_pd_duty;
-    float yaw_final_duty;
-    float base_duty;
-    float edge_blend;
     float left_duty;
     float right_duty;
 } line_tracker_output_t;
