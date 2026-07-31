@@ -6,9 +6,20 @@ so the host's RTSP evidence isolates AP and encoder behavior.
 """
 
 import os
+import sys
 import time
 
 import network
+
+# CanMV VS Code's “run remote file” executes through the REPL rather than as
+# ``python /path/file.py``.  Keep this sibling import deterministic in either
+# launch mode without changing the process-wide application path elsewhere.
+try:
+    _SOURCE_DIR = os.path.dirname(__file__)
+except NameError:
+    _SOURCE_DIR = "/sdcard/ball_vision_rtsp_probe"
+if _SOURCE_DIR and _SOURCE_DIR not in sys.path:
+    sys.path.append(_SOURCE_DIR)
 
 from rtsp_sensor_transport import SensorRtspServer
 
