@@ -11,6 +11,19 @@
 | FFmpeg | `ffmpeg`、`ffplay`、`ffprobe` 均由 `D:\A-Soft\DevTools\FFmpeg\bin` 解析；版本 `N-125856-g2ae2413488-20260730`。 |
 | 主机契约测试 | `k230/ball_vision/host/verify_environment.ps1` 通过；Python 3.13 下 7 项单元测试通过。 |
 
+## 0.1 首次板端只读探测（2026-07-31）
+
+| 检查 | 实测结果 |
+|---|---|
+| VS Code 插件连接 | `COM16`；状态 `就绪`。 |
+| 板卡 / 内存 | `CanMV K230 01Studio - 1G`。 |
+| 固件 | `v1.8-0`；与阶段 6 的 v1.8 基线一致。 |
+| 挂载点 | `/data`、`/sdcard`、`/udisk` 均可枚举。 |
+| 现有模型资产 | `/sdcard/mp_deployment_source/best_AnchorBaseDet_can2_5_s_20260727101349.kmodel`，`7,551,704` B；尚未下载计算 SHA-256，尚未运行。 |
+| 现有脚本备份 | `/sdcard/backup_before_wifi_transfer_20260731_181610/main.py`，`12,612` B；以及对应的 `mp_deployment_source/` 目录。 |
+
+本节只做文件系统和连接探测：未上传、删除、覆盖或运行板端脚本，亦未读取/记录任何网络凭据。
+
 ## 1. 配置快照
 
 | 项目 | 值 |
