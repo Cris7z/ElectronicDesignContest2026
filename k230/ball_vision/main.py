@@ -1,8 +1,4 @@
-"""Stage 6 K230 ball measurement + annotated RTSP entry point.
-
-Requires CanMV K230 v1.8 on the physical 01Studio board.  It deliberately has
-no UART import or actuator API: formal inter-board communication is Stage 7.
-"""
+"""K230 vision, RTSP evidence stream, and one-way RCT6 measurement output."""
 
 import gc
 import os
@@ -18,6 +14,7 @@ from libs.PipeLine import PipeLine
 
 from rtsp_writeback import WritebackRtsp
 from vision_contract import MeasurementTracker, PiecewiseCalibration
+from rct6_uart import Rct6UartPublisher
 
 try:
     from private_config import CONFIG as PRIVATE_CONFIG
@@ -216,6 +213,7 @@ def main():
     )
     pipeline.create(sensor_id=config["sensor_id"], to_ide=False)
     log_handle = _open_diagnostic_log(config["diagnostic_jsonl"])
+    rct6_uart = Rct6UartPublisher()
     rtsp = WritebackRtsp(
         config["rtsp_session"], config["rtsp_port"], config["rtsp_bitrate_kbps"]
     )
@@ -233,6 +231,7 @@ def main():
             del frame
             candidate = _best_candidate(result)
             sample = tracker.process(capture_ms, candidate)
+            rct6_uart.publish(sample)
             _draw_overlay(pipeline, config, candidate, sample, clock.fps())
             pipeline.show_image()
             _append_jsonl(log_handle, sample, time.ticks_diff(time.ticks_ms(), frame_start), 10)
