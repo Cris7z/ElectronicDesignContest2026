@@ -2,6 +2,9 @@
 
 #include <string.h>
 
+#define YAW_TRANSITION_MIN_DELTA 0.16f
+#define YAW_TRANSITION_D_MIN 0.25f
+
 static float clampf(float value, float minimum, float maximum)
 {
     if (value < minimum) {
@@ -124,6 +127,7 @@ void line_tracker_reset(line_tracker_t *tracker)
     tracker->last_seen_error = 0.0f;
     tracker->ramped_base_duty = tracker->config.speed_start_duty;
     tracker->ramped_yaw_duty = 0.0f;
+    tracker->previous_edge_blend = 0.0f;
     tracker->speed_weight_lpf = 0.0f;
     tracker->center_gap_ticks = 0U;
     tracker->lost_candidate_ticks = 0U;
@@ -217,6 +221,7 @@ static void begin_run(line_tracker_t *tracker)
     tracker->last_seen_error = 0.0f;
     tracker->ramped_base_duty = tracker->config.speed_start_duty;
     tracker->ramped_yaw_duty = 0.0f;
+    tracker->previous_edge_blend = 0.0f;
     tracker->speed_weight_lpf = 0.0f;
     tracker->center_gap_ticks = 0U;
     tracker->lost_candidate_ticks = 0U;
@@ -292,6 +297,7 @@ static void run_controller(line_tracker_t *tracker,
         tracker->lost_candidate_ticks = 0U;
         tracker->ramped_base_duty = tracker->config.speed_min_duty;
         tracker->ramped_yaw_duty = 0.0f;
+        tracker->previous_edge_blend = 0.0f;
         tracker->output.left_duty = tracker->config.speed_min_duty;
         tracker->output.right_duty = tracker->config.speed_min_duty;
         return;
@@ -444,10 +450,19 @@ static void run_controller(line_tracker_t *tracker,
     yaw_duty = clampf(yaw_duty, -tracker->config.yaw_limit_duty,
                        tracker->config.yaw_limit_duty);
     yaw_duty *= tracker->config.steering_polarity;
-    tracker->ramped_yaw_duty = ramp_toward(
-        tracker->ramped_yaw_duty, yaw_duty,
-        tracker->config.yaw_slew_step, tracker->config.yaw_slew_step);
+    if ((absf(yaw_duty - tracker->ramped_yaw_duty) >=
+         YAW_TRANSITION_MIN_DELTA) &&
+        ((absf(edge_blend - tracker->previous_edge_blend) >= 0.50f) ||
+         ((absf(d_duty) >= YAW_TRANSITION_D_MIN) &&
+          ((yaw_duty * tracker->ramped_yaw_duty) <= 0.0f)))) {
+        tracker->ramped_yaw_duty = ramp_toward(
+            tracker->ramped_yaw_duty, yaw_duty,
+            tracker->config.yaw_slew_step, tracker->config.yaw_slew_step);
+    } else {
+        tracker->ramped_yaw_duty = yaw_duty;
+    }
     yaw_duty = tracker->ramped_yaw_duty;
+    tracker->previous_edge_blend = edge_blend;
     tracker->output.debug_final_yaw = yaw_duty;
     tracker->output.left_duty = clampf(requested_base - yaw_duty,
                                        -tracker->config.duty_limit,

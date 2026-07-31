@@ -47,7 +47,7 @@ typedef struct {
     /* First-order low-pass for measurement derivative, 0 < alpha <= 1. */
     float pid_d_filter_alpha;
     float yaw_limit_duty;
-    /* Maximum final-yaw change per 5 ms control update. */
+    /* Maximum final-yaw change only during a detected transition. */
     float yaw_slew_step;
     float edge_yaw_duty;
     float yaw_gain_min;
@@ -96,6 +96,7 @@ typedef struct {
     float last_seen_error;
     float ramped_base_duty;
     float ramped_yaw_duty;
+    float previous_edge_blend;
     float speed_weight_lpf;
     uint16_t center_gap_ticks;
     uint8_t lost_candidate_ticks;
