@@ -19,8 +19,9 @@
 | 板卡 / 内存 | `CanMV K230 01Studio - 1G`。 |
 | 固件 | `v1.8-0`；与阶段 6 的 v1.8 基线一致。 |
 | 挂载点 | `/data`、`/sdcard`、`/udisk` 均可枚举。 |
-| 现有模型资产 | `/sdcard/mp_deployment_source/best_AnchorBaseDet_can2_5_s_20260727101349.kmodel`，`7,551,704` B；尚未下载计算 SHA-256，尚未运行。 |
-| 现有脚本备份 | `/sdcard/backup_before_wifi_transfer_20260731_181610/main.py`，`12,612` B；以及对应的 `mp_deployment_source/` 目录。 |
+| 现有模型资产 | `/sdcard/mp_deployment_source/best_AnchorBaseDet_can2_5_s_20260727101349.kmodel`，`7,551,704` B；已下载到忽略的本地快照，SHA-256 `7a879ad9a38902bf703f2f8de30e8b908d64ac52047a5c9e099eb1caea0fdb9a`。尚未运行。 |
+| 现有脚本备份 | `/sdcard/backup_before_wifi_transfer_20260731_181610/main.py`，`12,612` B；本地 SHA-256 `d668451b74be71414c25b45cb7cbd056698b193c8ae85bad8f725500938ed6b1`。 |
+| 静态安全检查 | 备份脚本无 UART 导入；包含相机/nncase 与网络 socket 原型代码，未包含 RTSP。检测到 3 处凭据类字段，值只保存在忽略的本地快照，不记录、不提交。 |
 
 本节只做文件系统和连接探测：未上传、删除、覆盖或运行板端脚本，亦未读取/记录任何网络凭据。
 
