@@ -10,6 +10,7 @@ the ball detector in the path.
 import _thread
 import os
 import time
+import uctypes
 
 import multimedia as mm
 from media.media import MediaManager
