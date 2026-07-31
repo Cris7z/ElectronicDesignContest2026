@@ -2,6 +2,14 @@
 
 > 状态：`DATA_READY` 前的模板。没有实物原始记录时只能写“主机测试通过”，不能写 G6 通过。
 
+## 0. 开发机环境（2026-07-31）
+
+| 检查 | 结果 |
+|---|---|
+| CanMV IDE K230 | 已安装至 `D:\A-Soft\DevTools\CanMV-K230\IDE`；入口 `bin\canmvide.exe` 存在。尚未连接 K230 板卡，未记录 IDE 连接/脚本运行结果。 |
+| FFmpeg | `ffmpeg`、`ffplay`、`ffprobe` 均由 `D:\A-Soft\DevTools\FFmpeg\bin` 解析；版本 `N-125856-g2ae2413488-20260730`。 |
+| 主机契约测试 | `k230/ball_vision/host/verify_environment.ps1` 通过；Python 3.13 下 7 项单元测试通过。 |
+
 ## 1. 配置快照
 
 | 项目 | 值 |
