@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$ExpectedFfmpegRoot = 'D:\A-Soft\DevTools\FFmpeg\bin',
-    [string]$ExpectedCanmvRoot = 'D:\A-Soft\DevTools\CanMV-K230',
-    [string]$ExpectedCanmvIdeExe = 'D:\A-Soft\DevTools\CanMV-K230\IDE\bin\canmvide.exe'
+    [string]$ExpectedVsCodeExe = 'D:\A-Soft\Microsoft VS Code\bin\code.cmd',
+    [string]$ExpectedCanmvExtension = 'kendryte747.canmv-vscode'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,14 +38,18 @@ foreach ($tool in 'ffmpeg', 'ffplay', 'ffprobe') {
     & $command.Source -version | Select-Object -First 1
 }
 
-if (-not (Test-Path -LiteralPath $ExpectedCanmvRoot)) {
-    throw "CanMV K230 tool root is missing: $ExpectedCanmvRoot"
+if (-not (Test-Path -LiteralPath $ExpectedVsCodeExe -PathType Leaf)) {
+    throw "VS Code CLI is missing: $ExpectedVsCodeExe"
 }
-Write-Output "CanMV_K230_ROOT=$ExpectedCanmvRoot"
-if (-not (Test-Path -LiteralPath $ExpectedCanmvIdeExe -PathType Leaf)) {
-    throw "CanMV IDE executable is missing: $ExpectedCanmvIdeExe"
+$installedExtensions = @(& $ExpectedVsCodeExe --list-extensions --show-versions)
+$extensionLine = @($installedExtensions | Where-Object {
+    $_ -match ('^' + [Regex]::Escape($ExpectedCanmvExtension) + '@')
+})
+if (-not $extensionLine.Count) {
+    throw "CanMV VS Code extension is missing: $ExpectedCanmvExtension"
 }
-Write-Output "CanMV_IDE_EXE=$ExpectedCanmvIdeExe"
+Write-Output "VS_CODE_CLI=$ExpectedVsCodeExe"
+Write-Output "CANMV_VSCODE_EXTENSION=$extensionLine"
 
 $python = Get-Command python -ErrorAction SilentlyContinue
 if ($null -eq $python) {
