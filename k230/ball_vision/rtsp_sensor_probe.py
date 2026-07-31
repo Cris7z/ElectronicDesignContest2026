@@ -11,18 +11,10 @@ import time
 
 import network
 
-# CanMV VS Code's “run remote file” executes through the REPL rather than as
-# ``python /path/file.py``.  Keep this sibling import deterministic in either
-# launch mode without changing the process-wide application path elsewhere.
-try:
-    _SOURCE_DIR = os.path.dirname(__file__)
-except NameError:
-    _SOURCE_DIR = ""
-# The CanMV VS Code extension may set ``__file__`` to its REPL wrapper rather
-# than the board path.  The deploy directory is intentionally fixed for this
-# probe, so keep sibling imports independent of that launch detail.
-if not _SOURCE_DIR or not _SOURCE_DIR.startswith("/sdcard/"):
-    _SOURCE_DIR = "/sdcard/ball_vision_rtsp_probe"
+# ``os.path`` is intentionally unavailable in the v1.8 MicroPython runtime.
+# The deploy directory is fixed for this probe, so no host-side path inference
+# is needed when the CanMV VS Code extension sends the script through its REPL.
+_SOURCE_DIR = "/sdcard/ball_vision_rtsp_probe"
 if _SOURCE_DIR and _SOURCE_DIR not in sys.path:
     sys.path.append(_SOURCE_DIR)
 
