@@ -30,6 +30,8 @@
 | S-K230-07 | CanMV K230 产品参数 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/intro/canmv_k230/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | 标准版硬件资源、内存选项、相机、供电和尺寸。 |
 | S-K230-08 | CanMV K230 GPIO 介绍 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/basic_examples/gpio_intro/` | 已阅读 | [`../hardware/K230_VISION_MODULE.md`](../hardware/K230_VISION_MODULE.md) | 40Pin、电源引脚和 GPIO 3.3 V 电平。 |
 | S-K230-09 | CanMV K230 资源下载 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/download/` | 已登记 | 待补原件 | 官方原理图、芯片手册、例程下载入口；后续下载时记录版本与 SHA-256。 |
+| S-K230-10 | 队内 K230 原型资料包 | ZIP，2026-07-31 审计 | `C:\Users\Cris\Downloads\K230.zip` | 已审计，不入库 | [`K230_LOCAL_PACKAGE_AUDIT.md`](K230_LOCAL_PACKAGE_AUDIT.md) | 记录包/镜像/模型指纹、两套原型差异、许可证与凭据边界。 |
+| S-K230-11 | CanMV K230 v1.8 AI+RTSP 示例 | 官方源码 | `https://github.com/kendryte/canmv_k230/tree/v1.8/resources/examples/02-Media` | 已阅读 | `k230/ball_vision/rtsp_writeback.py` | Stage 6 采用 PipeLine、Display writeback 与 H.264 RTSP；不沿用旧 JPEG/TCP。 |
 | S-PUR-01 | 项目采购/产品截图 | PNG | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\113dea6ebc231725c9ab2edf696659af_720.png` 及 `tb_image_share_*.png` | 已阅读 | 硬件清单、D36A/K230 文档 | 只证明购买套件标注和配件，不能代替实物丝印、原理图或额定参数。 |
 | S-H-01 | 2026 年赛题 H 题 PDF | PDF，4 页 | `D:\X\ElectronicDesignContest2026\H题_车载平衡滚球运动控制系统.pdf` | **已逐页阅读** | [`../requirements/H2026_OFFICIAL_REQUIREMENTS.md`](../requirements/H2026_OFFICIAL_REQUIREMENTS.md) | 已逐页整理题面、8 项要求、五项核心测试、场地/摆杆硬约束与评分。 |
 
@@ -38,3 +40,4 @@
 1. 新的硬件结论必须在本表登记原始来源后，再写入技术文档。
 2. 同一问题的资料与实物出现矛盾时，记录到 `docs/decisions/OPEN_QUESTIONS.md`，等待用户确认；不得自行选边。
 3. 每一份原理图完成 AI 可读化后，应在其硬件文档中保留页号、网络名、信号方向和不确定项，而不是只贴截图。
+4. 本地模型、镜像、数据集、录像和凭据只登记指纹/位置；不得以来源索引为由提交二进制大文件。

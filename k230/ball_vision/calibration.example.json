@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "example_only": true,
+  "installation_id": "REPLACE_WITH_PHYSICAL_CAMERA_INSTALLATION_ID",
+  "model_sha256": "REPLACE_WITH_MODEL_SHA256",
+  "orientation": {
+    "origin": "rod_center",
+    "positive_direction": "hinge_to_actuator",
+    "camera_mirror_compensated": false
+  },
+  "roi": [0, 150, 1280, 150],
+  "points": [
+    {"pixel_x": 120, "x_mm": -120},
+    {"pixel_x": 320, "x_mm": -80},
+    {"pixel_x": 520, "x_mm": -40},
+    {"pixel_x": 720, "x_mm": 0},
+    {"pixel_x": 920, "x_mm": 40},
+    {"pixel_x": 1120, "x_mm": 80},
+    {"pixel_x": 1260, "x_mm": 120}
+  ]
+}

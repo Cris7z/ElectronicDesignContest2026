@@ -17,6 +17,9 @@
 | S-C07-06 | `P03B电源模块原理图.pdf` | 54,716 | `2536e146c29fb09f53e4d3ce8c7561e82a2f4ee3ca4379c25a3affdf22346f36` |
 | S-MOTION-01 | `MS42CG使用手册-20260730.pdf` | 878,032 | `5067c587f1a99f8afb4d03fb74a63d4fe6368b8871a2958463cf424a155e185a` |
 | S-H-01 | `H题_车载平衡滚球运动控制系统.pdf` | 493,976 | `93e2c83dea40d158cb38710b067447de99b2502b18c3aaaa9e284390f0b622a8` |
+| S-K230-10 | `K230.zip` | 329,744,499 | `16f1a5fce04f77f251d8bb5191001e9ebe227417a6555d3d40d4c625661d3e3e` |
+| S-K230-10 | `CanMV_K230_01Studio_micropython_v1.8...img` | 650,117,120 | `9be388ed57fec2d0ef642dff58e9d1ece5cf9fbf4b6ee03d998d4b485439b134` |
+| S-K230-10 | `best_AnchorBaseDet_can2_5_s_20260730113421.kmodel` | 7,551,696 | `4a67044838abe7e6e96ada50f823311552d4702b81d8440271f6e5987ed35f03` |
 
 ## 待补原始文件
 
