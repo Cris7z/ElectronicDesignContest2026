@@ -34,7 +34,7 @@
 | ID | 硬件 | 当前状态 | H 题用途/当前结论 | 版本或实物确认 | 本阶段结论 |
 |---|---|---|---|---|---|
 | H-CTRL-01 | WHEELTEC C07A / TI MSPM0G3507 | `CURRENT_INSTALLED` | 当前唯一实时控制主机。 | C07A 具体版本待看实物丝印。 | 可作为当前循迹控制器；精确原理图尚未冻结。 |
-| H-CTRL-02 | S27F 或 S28A 模块化底板 | `PENDING_IDENTIFICATION` | 承载 C07A 外设和模块。 | 实物底板丝印未确认。 | 不得把任一版本的专属引脚当最终真值。 |
+| H-CTRL-02 | S27F 模块化底板 | `CURRENT_INSTALLED` | 承载 C07A 外设和模块。 | 用户于 2026-07-31 确认 S27F；C07A 核心板版本仍另行确认。 | 后续只按 S27F 资料整理底板资源。 |
 | H-POWER-01 | P03B 12 V→5 V | `CURRENT_INSTALLED` | 控制器、MPU6050、灰度模块供电；未来是否承担 K230 负载待测。 | 板载模块，具体负载能力待实测。 | 当前保留；K230 供电不冻结。 |
 | H-UI-01 | MPU6050（H5） | `CURRENT_PRESENT_UNUSED` | 板载惯性模块；当前纯循迹标签不依赖其控制数据。 | I²C0/INT 记录存在，待版本核对。 | 占用资源需在未来当前 IO 表中保留，但不写新功能。 |
 | H-UI-02 | 外接四针 I²C OLED | `CURRENT_PRESENT_UNUSED` | 物理已接入；当前纯循迹不刷新它。 | 地址/接线已有记录，但不作为本阶段代码目标。 | 保留为现有硬件，不增加显示功能。 |
@@ -44,12 +44,12 @@
 | H-MOTION-03 | D157B / 双 AT8236 | `REMOVED` | 先前方案的外置电机驱动。 | 已购但当前不接入。 | 不与 D103A/TB6612 并用。 |
 | H-SENSOR-01 | CD4051 八路模拟灰度模块 | `CURRENT_INSTALLED` | 当前主循迹传感器。 | 基线记录：5 V，AD2/AD1/AD0/OUT 至 MSPM0；黑线高 ADC。 | 当前循迹边界内；地址逻辑、电压裕量和建立时间仍待测。 |
 | H-SENSOR-02 | HiWonder LineFollower_8CH / LF04 | `REMOVED` | 旧/备选循迹传感器。 | 与已占用的 U3 灰度线束不兼容。 | 不进入当前循迹接线或代码。 |
-| H-MOTION-04 | D36A 步进电机驱动器 | `FUTURE_CONFIRMED` | 球杆执行器的 `STEP/DIR/EN` 驱动。 | 厂家包含多版本资料，实物版本、EN 极性、细分、限流待确认。 | 仅整理资料；禁止分配正式 IO 或接入当前车。 |
+| H-MOTION-04 | D36A V1.1 步进电机驱动器 | `FUTURE_CONFIRMED` | 球杆执行器的 `STEP/DIR/EN` 驱动。 | 用户依据实物正反面照片于 2026-07-31 确认 V1.1；厂家资料说明 V1.1 相对 V1.0 增加输入 ESD 与电源 TVS。 | 仅整理资料；拨码档位、电机额定电流和台架安全态待确认。 |
 | H-MOTION-05 | 42 型步进电机 + MS42CG 编码器 | `FUTURE_CONFIRMED` | 球杆角度闭环。 | 精确型号、方向、A/B/PWM 参数待实测。 | 仅整理资料；编码器必须按 3.3 V 约束复核。 |
 | H-MECH-01 | 32 cm × 24 cm 三轮差速底盘 | `CURRENT_INSTALLED` | 当前车体。 | 几何边界和实际轮距待最终实测。 | 当前循迹边界内。 |
 | H-MECH-02 | 25 cm PPR 管、约 1 cm 钢球、铰链与传动 | `FUTURE_CONFIRMED` | H 题球杆机械系统。 | 机构尺寸和装配状态待记录。 | 仅做资料与机械清单，不做控制实现。 |
-| H-VISION-01 | K230 视觉主板 | `PENDING_IDENTIFICATION` | 后续球检测与图传。 | 旧文档写 01Studio CanMV K230；订单截图和本地资料指向 正点原子 K230D BOX。 | Q-003 未解前不得冻结接口、文档或代码。 |
-| H-VISION-02 | GC2093 摄像头、24P 排线及 K230 附件 | `PENDING_IDENTIFICATION` | K230 图像输入与装车。 | 订单截图指向 K230D BOX 标配 GC2093；实物到货/型号待确认。 | 随 Q-003 一并确认。 |
+| H-VISION-01 | 01Studio CanMV K230 | `FUTURE_CONFIRMED` | 后续球检测与图传。 | 用户于 2026-07-31 确认使用 01Studio；先前正点原子订单截图不作为最终选型依据。 | 后续只按 01Studio 对应资料整理；不写 K230 代码。 |
+| H-VISION-02 | GC2093 摄像头、24P 排线及 K230 附件 | `FUTURE_CONFIRMED` | K230 图像输入与装车。 | 以最终 01Studio 套装实物标签为准。 | 随 K230 技术文档整理，当前不接入。 |
 | H-POWER-02 | 3S/12 V 电池、总开关、保险、星形分配 | `PENDING_IDENTIFICATION` | 整车动力与安全供电。 | 容量、C 倍率、保险、线规和峰值电流未冻结。 | 不能给未来功能作供电承诺。 |
 | H-OPS-01 | 2.4 GHz AP、场外笔记本、VLC/OBS | `PENDING_IDENTIFICATION` | 后续图传、录像、回放。 | AP 方案和实际可用设备待确认。 | 当前纯循迹不依赖。 |
 
