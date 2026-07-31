@@ -14,11 +14,8 @@
 | S-C07-04 | D103A / TB6612FNG 原理图 | PDF | `...\2.D103A_TB6612精简版模块资料\1.TB6612FNG模块原理图（D103A）.pdf` | 已阅读 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 左右轮映射以已关闭的 Q-002 为准。 |
 | S-C07-05 | C07A 核心板 V1.0 / V1.1 原理图及更新记录 | PDF / TXT / PNG | `...\3.原理图\C07A核心板原理图_V1.0（MSPM0G3507）.pdf`、`...V1.1...pdf`、`C07A硬件更新内容记录.txt` | 已阅读版本差异 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 核心板已由两个底部按键与厂商识别图确认是 V1.1。 |
 | S-C07-06 | P03B 5 V / 3.3 V 稳压模块原理图 | PDF | `D:\X\ElectronicDesignContest2026\补充资料\1.原理图与封装\P03B电源模块原理图.pdf` | 已阅读 | [`../hardware/P03B_POWER_MODULE.md`](../hardware/P03B_POWER_MODULE.md) | 已完成网络与风险整理，额定能力仍待实测。 |
-| S-C07-07 | MPU6050 模块资料包入口及芯片手册 | TXT / PDF | `...\底板所用其他模块资料包\3.MPU6050模块资料包.txt`；`...\5.芯片数据手册\MPU6050` | `HISTORICAL_EXCLUDED` | 不派生新文档 | 用户已弃用陀螺仪；不再为该模块补齐技术资料。 |
 | S-MOTION-01 | MS42CG 使用手册 | PDF，2026-07-30 | `D:\X\ElectronicDesignContest2026\补充资料\MS42CG使用手册-20260730.pdf` | 已阅读 | [`../hardware/MS42CG_ENCODER.md`](../hardware/MS42CG_ENCODER.md) | 已确认默认 A/B/PWM/Z 模式和接口电平；不使用其中旧开发板的示例引脚。 |
-| S-REF-01 | MSPM0G3507 步进电机闭环例程及工程 | PDF / CCS 工程 | `D:\X\ElectronicDesignContest2026\补充资料\MSPM0G3507步进电机闭环例程.pdf`；`...\WHEELTEC_C07A_D36A_StepperMotor_PID` | `HISTORICAL_REFERENCE` | 不导入代码 | 可作为未来台架验收思路参考；未经 IO、安全态和实物验证，不得迁入当前分支。 |
-| S-REF-02 | 巡线球杆平衡小车系统设计讲解 | PDF，38 页 | `D:\X\ElectronicDesignContest2026\补充资料\巡线球杆平衡小车_系统设计讲解.pdf` | `HISTORICAL_REFERENCE` | 不派生硬件真值 | 使用 C30D、四路红外与旧 K230 方案；仅保留架构/调参思路，禁止覆盖当前已确认选型。 |
-| S-SENSOR-01 | Yahboom 八路灰度巡线模块页面 | 在线页面 | `https://www.yahboom.com/study_module/8-GS` | 候选来源，待实物核对 | [`../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md`](../hardware/C07A_S27F_LINE_TRACKER_HARDWARE.md) | 页面只有图像与下载入口，不能从中冻结当前 CD4051 的针序或电气参数。 |
+| S-REF-03 | 2024 H 题校赛 STM32 工程 | Keil / STM32 标准外设库 | `D:\X\ElectronicDesignContest2026\reference\2024H_keil_early` | `HISTORICAL_REFERENCE` | STM32F103RCT6 后续技术整理 | `Project.uvprojx` 目标为 `STM32F103RC`；仅参考启动、UART、定时器和台架经验，不照搬旧 IO、参数或业务代码。 |
 | S-D36-01 | D36A 驱动用户手册 | PDF，V1.5，2026-06-17 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\1.用户手册与使用教程\D36A驱动用户手册_V1.5_2026.6.17.pdf` | 已阅读相关页 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | 接口、拨码、安全注意事项。 |
 | S-D36-02 | D36A V1.1 原理图 | PDF，V1.1，2026-04-20 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\3.原理图\D36A双路步进电机驱动模块_V1.1(2026.04.20).pdf` | 已阅读相关页 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | 后续网络表复核的原始来源。 |
 | S-D36-03 | D36A 版本说明与识别图 | TXT / PNG，V1.1 资料包 | `D:\BaiduNetdiskDownload\【WHEELTEC】D36A步进电机驱动附送资料\...\3.原理图` | 已阅读 | [`../hardware/D36A_STEPPER_DRIVER.md`](../hardware/D36A_STEPPER_DRIVER.md) | V1.1 的 ESD / TVS 差异与丝印位置。 |
@@ -35,12 +32,6 @@
 | S-K230-09 | CanMV K230 资源下载 | 在线文档 | `https://wiki.01studio.cc/docs/canmv_k230/download/` | 已登记 | 待补原件 | 官方原理图、芯片手册、例程下载入口；后续下载时记录版本与 SHA-256。 |
 | S-PUR-01 | 项目采购/产品截图 | PNG | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\113dea6ebc231725c9ab2edf696659af_720.png` 及 `tb_image_share_*.png` | 已阅读 | 硬件清单、D36A/K230 文档 | 只证明购买套件标注和配件，不能代替实物丝印、原理图或额定参数。 |
 | S-H-01 | 2026 年赛题 H 题 PDF | PDF，4 页 | `D:\X\ElectronicDesignContest2026\H题_车载平衡滚球运动控制系统.pdf` | **已逐页阅读** | [`../requirements/H2026_OFFICIAL_REQUIREMENTS.md`](../requirements/H2026_OFFICIAL_REQUIREMENTS.md) | 已逐页整理题面、8 项要求、五项核心测试、场地/摆杆硬约束与评分。 |
-
-## 已排除的历史来源
-
-| 来源 | 处理 | 原因 |
-|---|---|---|
-| 正点原子 DNK230D / K230D BOX 资料与订单截图 | `HISTORICAL_EXCLUDED` | 用户已确认最终板卡是 **01Studio CanMV K230**。这些资料只能保留为采购历史线索，不能用作引脚、供电、固件、相机或代码依据。 |
 
 ## 使用规则
 

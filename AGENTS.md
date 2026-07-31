@@ -3,7 +3,8 @@
 ## 当前边界
 
 - 当前唯一允许修改的业务代码：`firmware/line_tracker/`。
-- 不得提前加入 D36A、MS42CG、K230、摄像头/图传、球杆、MPU6050、蓝牙、圈数或终点逻辑。
+- 不得加入三板架构之外的控制器、传感器或通信方案；当前阶段也不得提前加入 STM32F103RCT6、D36A、MS42CG、K230、摄像头/图传、球杆、圈数或终点逻辑。
+- 后续三板架构已选择 C07A（循迹/UI）+ STM32F103RCT6（滚球实时控制）+ 01Studio CanMV K230（视觉/图传）；在 Q-005、Q-006、Q-008 的台架门槛关闭前，不得据此分配正式 IO 或建立未来控制代码。
 - 接线与 IO 的唯一入口是 `docs/hardware/CURRENT_WIRING.md` 和 `docs/hardware/CURRENT_IO_OWNERSHIP.md`。
 - 发生实物、原理图、代码或接线冲突时，停止相关修改，更新 `docs/decisions/OPEN_QUESTIONS.md` 并询问用户。
 
@@ -17,4 +18,3 @@
 ## 验证要求
 
 修改控制核心后先运行 `firmware/line_tracker/sim` 的全部测试；能访问 TI 工具链时再运行 `build_ticlang.ps1`。没有实车时不得声称赛道验证通过。
-

@@ -1,12 +1,15 @@
-# 历史资料使用边界
+# STM32 历史工程使用边界
 
-> 这些资料可以帮助理解方法或台架验证顺序，但其硬件选型与当前项目不一致。它们**不能**作为当前接线、IO、代码或赛题需求的真值。
+当前只保留一份与唯一三板架构直接相关的历史工程：
 
-| 来源 | 可参考 | 明确禁止照搬 |
+| 来源 | 可参考 | 禁止直接照搬 |
 |---|---|---|
-| `巡线球杆平衡小车_系统设计讲解.pdf` | 串级控制的概念、方向校验顺序、调参故障排查思路。 | C30D 控制器、四路红外巡线、旧 K230 方案、其中的信号线和代码结构。 |
-| `MSPM0G3507步进电机闭环例程.pdf` 与 `WHEELTEC_C07A_D36A_StepperMotor_PID` | D36A / 编码器台架验证的步骤参考。 | 旧工程文件、SysConfig、示例引脚、控制参数和任何直接复制的驱动代码。 |
-| 正点原子 DNK230D / K230D BOX 资料 | 无；仅历史采购线索。 | 所有引脚、供电、相机、固件与代码结论。 |
-| MPU6050 资料 | 无；仅历史记录。 | 新功能、接线、IO 占用和代码。 |
+| `D:\X\ElectronicDesignContest2026\reference\2024H_keil_early` | STM32F103RC 启动、UART、定时器和既有板卡使用经验。 | 旧循迹、电机、OLED、引脚分配、控制参数和业务状态机。2026 H 题必须重新分配 IO、实现协议并完成台架安全验收。 |
 
-当前真值入口依次是：`docs/decisions/OPEN_QUESTIONS.md`、`docs/hardware/HARDWARE_INVENTORY.md`、相应硬件技术文档和后续的正式接线/IO 表。
+当前真值入口依次是：
+
+1. `docs/PROJECT_REBUILD_PLAN.md`；
+2. `docs/decisions/OPEN_QUESTIONS.md`；
+3. `docs/hardware/HARDWARE_INVENTORY.md`；
+4. 对应硬件技术文档；
+5. 后续正式接线表、IO 表和实物验收记录。
