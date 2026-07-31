@@ -7,6 +7,7 @@
 - 不得加入三板架构之外的控制器、传感器或通信方案；不得提前加入 STM32F103RCT6、D36A、MS42CG、K230、摄像头/图传或球杆控制。
 - 后续三板架构已选择 C07A（循迹/UI）+ STM32F103RCT6（滚球实时控制）+ 01Studio CanMV K230（视觉/图传）；在 Q-005、Q-006、Q-008 的台架门槛关闭前，不得据此分配正式 IO 或建立未来控制代码。
 - 接线与 IO 的唯一入口是 `docs/hardware/CURRENT_WIRING.md` 和 `docs/hardware/CURRENT_IO_OWNERSHIP.md`。
+- 已经接好的线束按实物逐根核对；不存在供电、电平、共地、引脚/定时器复用、调试口或默认使能冲突时保持原样，不为整理线束而重接。
 - 发生实物、原理图、代码或接线冲突时，停止相关修改，更新 `docs/decisions/OPEN_QUESTIONS.md` 并询问用户。
 
 ## 循迹安全规则
