@@ -23,6 +23,7 @@
 | E-07 | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\113dea6ebc231725c9ab2edf696659af_720.png` 与 `tb_image_share_*.png` | 采购/产品截图：01Studio CanMV K230 套件、球杆传动件、D36A 和底盘。仅作为套件证据。 |
 | E-08 | `D:\X\ElectronicDesignContest2026\硬件购买及开源资料\开源网址与地址.txt` | 当前三板系统相关资料入口。 |
 | E-09 | 用户于 2026-07-31 提供的控制板实物照片及型号确认；`D:\X\ElectronicDesignContest2026\reference\2024H_keil_early\Project.uvprojx` | 实物确认为 STM32F103RCT6；旧校赛 Keil 工程目标为 `STM32F103RC`，可用于核对芯片族和历史驱动结构，不作为新接线真值。 |
+| E-10 | `D:\X\单片机\03-手册资料\STM32F103RCT6系统板资料（信泰微电子）(1).zip` | 信泰微电子系统板资料：原理图、BOM、尺寸图、厂家注意事项和旧 Keil 示例。摘要、矛盾和禁用项见 [`STM32F103RCT6_BOARD_REFERENCE.md`](STM32F103RCT6_BOARD_REFERENCE.md)。 |
 
 ## 3. 硬件总清单
 
@@ -30,7 +31,7 @@
 |---|---|---|---|---|---|
 | H-CTRL-01 | WHEELTEC C07A V1.1 / TI MSPM0G3507 | `CURRENT_INSTALLED` | 当前唯一实时控制主机。 | 两个底部按键与厂家识别图确认 V1.1。 | C07A V1.1 原理图已冻结为当前控制器资料依据。 |
 | H-CTRL-02 | S27F 模块化底板 | `CURRENT_INSTALLED` | 承载 C07A 外设和模块。 | 用户于 2026-07-31 确认 S27F。 | 只按 S27F 资料整理底板资源。 |
-| H-CTRL-03 | STM32F103RCT6 开发板 | `FUTURE_CONFIRMED` | 后续承接滚球实时控制，并与 C07A、K230 分工。 | 用户提供实物照片并确认 RCT6；旧校赛 Keil 工程目标同为 `STM32F103RC`。 | 控制器选型已确认；当前不接入车、不分配正式 IO、不建立驱动。见 Q-008。 |
+| H-CTRL-03 | STM32F103RCT6 开发板 | `FUTURE_CONFIRMED` | 后续承接滚球实时控制，并与 C07A、K230 分工。 | 用户确认实物为 RCT6；E-10 原理图/BOM却标 `F103RE`，不得用资料容量覆盖实物。 | 控制器选型已确认；当前不接入车、不分配正式 IO、不建立驱动。见 [`STM32F103RCT6_BOARD_REFERENCE.md`](STM32F103RCT6_BOARD_REFERENCE.md) 与 Q-008。 |
 | H-POWER-01 | P03B 12/24 V→5 V / 3.3 V | `CURRENT_INSTALLED` | 当前循迹控制器、灰度模块等的逻辑电源路径；未来是否承担 K230 负载待测。 | 原理图已找到；具体持续/峰值能力待实测。 | 当前保留；K230 供电不冻结。 |
 | H-UI-02 | 外接四针 I²C OLED | `CURRENT_PRESENT_UNUSED` | 物理已接入；当前纯循迹不刷新它。 | 地址/接线已有记录，但不作为本阶段代码目标。 | 保留为现有硬件，不增加显示功能。 |
 | H-UI-03 | BLS 启动键、状态 LED | `CURRENT_INSTALLED` | 当前循迹启动、停车和状态提示。 | PA18/PB9 为现有记录；电平实测记录待并入后续接线验收。 | 当前循迹边界内。 |
