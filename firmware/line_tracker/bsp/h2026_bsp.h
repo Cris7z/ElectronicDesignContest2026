@@ -102,8 +102,9 @@ void h2026_bsp_encoder_snapshot(h2026_bsp_encoder_snapshot_t *snapshot);
  */
 bool h2026_bsp_line_scan(h2026_bsp_line_sample_t *sample);
 
-/** Raw PA18 input level; active polarity and debounce belong to the app. */
-bool h2026_bsp_start_level(void);
+/** External active-high button-module OUT pins on J1-2/PB18 and J1-3/PB19. */
+bool h2026_bsp_start_button_pressed(void);
+bool h2026_bsp_mode_button_pressed(void);
 void h2026_bsp_led_set(bool on);
 
 /**

@@ -84,7 +84,7 @@ void lap_monitor_start(lap_monitor_t *monitor,
 void lap_monitor_cancel(lap_monitor_t *monitor)
 {
     if ((monitor != NULL) &&
-        (monitor->output.state == LAP_MONITOR_RUNNING)) {
+        (monitor->output.state != LAP_MONITOR_WAIT)) {
         monitor->output.state = LAP_MONITOR_WAIT;
         monitor->output.approach_active = false;
     }

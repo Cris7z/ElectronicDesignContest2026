@@ -1,9 +1,9 @@
-"""Back up C07A calibration, program the application, verify, and run.
+"""Back up runtime calibration, program factory app+calibration, and run.
 
-The application linker excludes 0x1FC00..0x1FFFF.  This tool still reads the
-reserved sector both before and after programming: a changed hash means the
-download procedure was not safe for the stored calibration and the target is
-left halted for recovery from the backup.
+The .out image owns a separate calibration section at 0x1FC00. Every program
+download intentionally restores the frozen calibration. A MODE calibration
+may replace that data at runtime; its pre-flash copy is retained as evidence,
+but the newly downloaded image must match the factory calibration exactly.
 """
 
 import argparse
@@ -11,6 +11,7 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 import re
+import struct
 import sys
 
 from scripting import initScripting
@@ -21,6 +22,18 @@ CALIBRATION_BYTES = 1024
 DEFAULT_CCXML = Path(
     r"D:\A-Soft\DevTools\TI\ccs2100\ccs\scripting\examples\debugger"
     r"\mspm0g3507\mspm0g3507.ccxml"
+)
+DEFAULT_CALIBRATION_WORDS = (
+    0x47385231, 0x00000001, 0x74D90001, 0xC011A6ED,
+    0x0FFF00AE, 0x0FFF00AE, 0x0FFF00AC, 0x0FFF00AD,
+    0x0FFF00AB, 0x0FFF00AC, 0x0FFF00AB, 0x0FFF00AB,
+    0xC20C0000, 0xC1C80000, 0xC1700000, 0xC0A00000,
+    0x40A00000, 0x41700000, 0x41C80000, 0x420C0000,
+)
+DEFAULT_CALIBRATION = (
+    b"".join(struct.pack("<I", word) for word in DEFAULT_CALIBRATION_WORDS) +
+    bytes([0xFF]) *
+    (CALIBRATION_BYTES - (4 * len(DEFAULT_CALIBRATION_WORDS)))
 )
 
 
@@ -75,10 +88,12 @@ def main():
         after = read_calibration(session)
         after_hash = sha256(after).hexdigest()
         print(f"CALIBRATION SHA256 AFTER:  {after_hash}")
-        if after_hash != before_hash:
+        expected_hash = sha256(DEFAULT_CALIBRATION).hexdigest()
+        print(f"CALIBRATION SHA256 DEFAULT:{expected_hash}")
+        if after != DEFAULT_CALIBRATION:
             raise RuntimeError(
-                "calibration sector changed during programming; target remains "
-                "halted and the pre-flash backup must be restored before run"
+                "downloaded calibration does not match the frozen default; "
+                "target remains halted"
             )
 
         session.target.reset()

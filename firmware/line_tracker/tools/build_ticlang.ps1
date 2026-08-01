@@ -46,10 +46,30 @@ if (-not [regex]::IsMatch($linkerText, $pattern)) {
 }
 [IO.File]::WriteAllText($linkerFile,
     [regex]::Replace($linkerText, $pattern, '${1}0x0001FC00'))
+$linkerText = [IO.File]::ReadAllText($linkerFile)
+$flashLine = '(?m)^(\s*FLASH\s+\(RX\)\s*:\s*origin\s*=\s*0x00000000,\s*length\s*=\s*0x0001FC00\s*)$'
+if (-not [regex]::IsMatch($linkerText, $flashLine)) {
+    throw "Reserved application Flash region missing: $linkerFile"
+}
+$linkerText = [regex]::Replace(
+    $linkerText, $flashLine,
+    '${1}' + [Environment]::NewLine +
+    '    CALIBRATION     (R)   : origin = 0x0001FC00, length = 0x00000400')
+$intvecLine = '(?m)^(\s*\.intvecs:\s*>\s*0x00000000\s*)$'
+if (-not [regex]::IsMatch($linkerText, $intvecLine)) {
+    throw "Unexpected SECTIONS layout in generated linker file: $linkerFile"
+}
+$linkerText = [regex]::Replace(
+    $linkerText, $intvecLine,
+    '${1}' + [Environment]::NewLine +
+    '    .calibration : palign(8) {} > CALIBRATION')
+[IO.File]::WriteAllText($linkerFile, $linkerText)
 
 $sources = @(
     $appPath,
     (Join-Path $projectRoot 'app\line_tracker_display.c'),
+    (Join-Path $projectRoot 'app\line_calibration_store.c'),
+    (Join-Path $projectRoot 'app\default_calibration_image.c'),
     (Join-Path $sharedRoot 'bsp\h2026_bsp.c'),
     (Join-Path $OutputDirectory 'ti_msp_dl_config.c'),
     (Join-Path $sourceRoot 'ti\devices\msp\m0p\startup_system_files\ticlang\startup_mspm0g350x_ticlang.c')
@@ -59,7 +79,10 @@ if ($AppSource -ne 'app\main.c') {
 }
 $sources = @(
     (Join-Path $projectRoot 'core\line_tracker.c'),
+    (Join-Path $projectRoot 'core\line_calibration.c'),
+    (Join-Path $projectRoot 'core\line_calibration_session.c'),
     (Join-Path $projectRoot 'core\lap_monitor.c'),
+    (Join-Path $projectRoot 'core\task_mode.c'),
     (Join-Path $projectRoot 'core\wheel_speed_pi.c')
 ) + $sources
 $compileArgs = @(
@@ -86,6 +109,11 @@ $mapFile = Join-Path $OutputDirectory 'line_tracker.map'
     "-Wl,-l$(Join-Path $OutputDirectory 'device_linker.cmd')" `
     "-Wl,-l$(Join-Path $OutputDirectory 'device.cmd.genlibs')" '-Wl,-llibc.a'
 if ($LASTEXITCODE -ne 0) { throw "Link failed: $LASTEXITCODE" }
+$mapText = [IO.File]::ReadAllText($mapFile)
+if ($mapText -notmatch '(?m)^\s*0001fc00\s+0001fc00\s+00000050\s+00000050\s+r--\s+\.calibration\s*$' -or
+    $mapText -notmatch '(?m)^0001fc00\s+g_default_calibration_image\s*$') {
+    throw "Frozen calibration is missing or misplaced in linked image: $mapFile"
+}
 
 $hexFile = Join-Path $OutputDirectory 'line_tracker.hex'
 & $hexTool --byte --memwidth=8 --romwidth=8 --intel -o $hexFile $outputFile
@@ -93,5 +121,5 @@ if ($LASTEXITCODE -ne 0) { throw "Hex conversion failed: $LASTEXITCODE" }
 
 Get-Item -LiteralPath $outputFile, $hexFile, $mapFile |
     Select-Object Name, Length, FullName | Format-Table -AutoSize
-Select-String -LiteralPath $mapFile -Pattern '^\s+FLASH\s+', '^\s+SRAM\s+' |
+Select-String -LiteralPath $mapFile -Pattern '^\s+FLASH\s+', '^\s+CALIBRATION\s+', '^\s+SRAM\s+' |
     ForEach-Object { $_.Line }

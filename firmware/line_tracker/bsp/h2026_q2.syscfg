@@ -153,8 +153,8 @@ GPIO_MOTOR_DIR.associatedPins[3].assignedPin = "17";
 GPIO_MOTOR_DIR.associatedPins[3].initialValue = "CLEARED";
 
 GPIO_UI.$name = "GPIO_UI";
-GPIO_UI.associatedPins.create(2);
-GPIO_UI.associatedPins[0].$name = "START";
+GPIO_UI.associatedPins.create(4);
+GPIO_UI.associatedPins[0].$name = "BLS";
 GPIO_UI.associatedPins[0].assignedPort = "PORTA";
 GPIO_UI.associatedPins[0].assignedPin = "18";
 GPIO_UI.associatedPins[0].direction = "INPUT";
@@ -164,3 +164,14 @@ GPIO_UI.associatedPins[1].$name = "STATUS_LED";
 GPIO_UI.associatedPins[1].assignedPort = "PORTB";
 GPIO_UI.associatedPins[1].assignedPin = "9";
 GPIO_UI.associatedPins[1].initialValue = "CLEARED";
+/* Three-pin 3.3 V button modules: OUT is low released and high pressed. */
+GPIO_UI.associatedPins[2].$name = "START_BUTTON";
+GPIO_UI.associatedPins[2].assignedPort = "PORTB";
+GPIO_UI.associatedPins[2].assignedPin = "18";
+GPIO_UI.associatedPins[2].direction = "INPUT";
+GPIO_UI.associatedPins[2].internalResistor = "NONE";
+GPIO_UI.associatedPins[3].$name = "MODE_BUTTON";
+GPIO_UI.associatedPins[3].assignedPort = "PORTB";
+GPIO_UI.associatedPins[3].assignedPin = "19";
+GPIO_UI.associatedPins[3].direction = "INPUT";
+GPIO_UI.associatedPins[3].internalResistor = "NONE";

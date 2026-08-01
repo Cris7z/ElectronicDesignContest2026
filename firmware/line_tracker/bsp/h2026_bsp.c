@@ -587,9 +587,16 @@ fail:
     return false;
 }
 
-bool h2026_bsp_start_level(void)
+bool h2026_bsp_start_button_pressed(void)
 {
-    return (DL_GPIO_readPins(GPIO_UI_START_PORT, GPIO_UI_START_PIN) != 0u);
+    return (DL_GPIO_readPins(GPIO_UI_START_BUTTON_PORT,
+                             GPIO_UI_START_BUTTON_PIN) != 0u);
+}
+
+bool h2026_bsp_mode_button_pressed(void)
+{
+    return (DL_GPIO_readPins(GPIO_UI_MODE_BUTTON_PORT,
+                             GPIO_UI_MODE_BUTTON_PIN) != 0u);
 }
 
 void h2026_bsp_led_set(bool on)
