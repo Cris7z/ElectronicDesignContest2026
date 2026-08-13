@@ -25,12 +25,18 @@
 ## 3. RCT6 目录约定
 
 - `USER/main_ball_beam_k230_control.c`：正式活动源，当前等同 V16。
-- `USER/main_ball_beam_k230_hr04_experimental.c`：H-R04 实验源，不是正式构建入口。
 - `releases/20260801_v16_q3_level_coast_hold/`：正式 V16 源码与 BIN 回退点。
-- `releases/` 其余 V6–V15：调参历史，只用于问题追溯。
+- V6–V15 调参副本和 H-R04 实验入口已从终版工作树移除；需要追溯时从 Git 历史取回。
 - `Makefile` 默认编译正式活动源；`.elf/.map` 属于可再生构建产物，不归档。
 
-## 4. 恢复与验证
+## 4. 本地实机资产
+
+- `local/field-final/k230/`：K230 模型、RTSP 终版/回退快照和私有网络配置。
+- `local/field-final/reference/`：题目 PDF、器件清单和 MS42CG 手册。
+- `local/field-final/MANIFEST.md`：文件 SHA-256 与恢复用途。
+- `local/` 被 Git 忽略，其中包含私有配置和不适合上传的二进制资产；代码、文档和公开回退点以 Git 远端为准。
+
+## 5. 恢复与验证
 
 ```powershell
 # C07A 主机测试与 TI 构建
@@ -45,7 +51,7 @@ mingw32-make
 
 C07A 烧录必须使用 `firmware/line_tracker/tools/flash_target.py`，让应用程序与末端标定扇区一起下载并校验。RCT6 烧录会复位控制器，机械机构和动力电源无人看守时禁止执行。
 
-## 5. 历史与边界
+## 6. 历史与边界
 
 - `c07a-line-tracker-final-20260801` 保留 M1/M3 的 `7.040 m` 旧终版，可用于回退；不移动或覆盖该标签。
 - K230 的 40 Hz/Q3 UART 代码仍保存在独立 Stage6 工作树中；它与现场 RTSP 冻结标签分开管理，不用候选目录覆盖已验证回退基线。
