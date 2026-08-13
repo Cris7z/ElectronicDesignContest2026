@@ -3,6 +3,7 @@
 /reference/
 /outputs/
 /Build/
+/local/
 
 # Local source material and machine-specific workspaces
 /CCS_Workspace/
