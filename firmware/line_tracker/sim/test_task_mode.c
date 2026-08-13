@@ -12,7 +12,7 @@ static void test_mode_cycle(void)
 
 static void test_distance_profiles(void)
 {
-    assert(fabsf(task_mode_target_distance_m(TASK_MODE_H_R02) - 7.04f) <
+    assert(fabsf(task_mode_target_distance_m(TASK_MODE_H_R02) - 7.06f) <
            0.0001f);
     assert(fabsf(task_mode_target_distance_m(TASK_MODE_CONSTANT_SPEED) -
                  7.04f) < 0.0001f);

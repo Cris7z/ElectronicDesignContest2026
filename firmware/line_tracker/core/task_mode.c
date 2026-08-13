@@ -1,6 +1,7 @@
 #include "task_mode.h"
 
-#define H_R02_DISTANCE_M 7.0400f
+#define H_R02_DISTANCE_M 7.0600f
+#define CONSTANT_SPEED_DISTANCE_M 7.0400f
 #define CONSTANT_SPEED_TIMEOUT_MS 60000U
 
 bool task_mode_is_valid(task_mode_t mode)
@@ -22,7 +23,9 @@ task_mode_t task_mode_next(task_mode_t mode)
 
 float task_mode_target_distance_m(task_mode_t mode)
 {
-    (void)mode;
+    if (mode == TASK_MODE_CONSTANT_SPEED) {
+        return CONSTANT_SPEED_DISTANCE_M;
+    }
     return H_R02_DISTANCE_M;
 }
 

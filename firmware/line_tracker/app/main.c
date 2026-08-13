@@ -37,8 +37,9 @@
 #define WHEEL_SHADOW_APPLY_CORRECTION false
 
 /* H-R02: first ground run stopped at the final semicircle apex with the
- * geometric 6.1416 m value; use the resulting 7.040 m encoder target. */
-#define H_R02_LAP_DISTANCE_M 7.0400f
+ * geometric 6.1416 m value; the frozen 7.040 m target now carries the final
+ * user-requested +0.020 m M1 parking trim. */
+#define H_R02_LAP_DISTANCE_M 7.0600f
 #define MISSION_APPROACH_DISTANCE_M 0.1500f
 #define MISSION_APPROACH_DUTY_LIMIT 0.1200f
 #define MISSION_TIMEOUT_MS 20000U
