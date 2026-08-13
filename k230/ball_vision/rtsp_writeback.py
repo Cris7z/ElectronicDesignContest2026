@@ -11,8 +11,7 @@ import time
 
 import multimedia as mm
 from _media import Display
-from media.vencoder import Encoder, ChnAttrStr, StreamData
-from mpp import ALIGN_UP, VENC_CHN_ID_0
+from media.vencoder import ALIGN_UP, Encoder, ChnAttrStr, StreamData
 
 
 class WritebackRtsp:
@@ -24,7 +23,8 @@ class WritebackRtsp:
         self._thread_done = True
         self._encoder = None
         self._server = None
-        self._channel = VENC_CHN_ID_0
+        # CanMV v1.8 on this board uses the explicit encoder channel API.
+        self._channel = 0
 
     def start(self):
         if self._running:

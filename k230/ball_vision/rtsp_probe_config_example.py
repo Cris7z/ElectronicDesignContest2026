@@ -6,7 +6,7 @@ the K230 AP + H.264 RTSP transport before the measured-vision app is deployed.
 
 CONFIG = {
     "sensor_id": 0,
-    "rgb888p_size": [1280, 720],
+    "rgb888p_size": [800, 480],
     "display_mode": "virt",
     "display_size": [1280, 720],
     "ap_ssid": "K230-BALL-G6",
@@ -14,5 +14,7 @@ CONFIG = {
     "rtsp_session": "ball",
     "rtsp_port": 8554,
     "rtsp_bitrate_kbps": 2048,
-    "rtsp_gop": 30,
+    "rtsp_gop": 15,
+    "rtsp_src_fps": 60,
+    "rtsp_dst_fps": 60,
 }

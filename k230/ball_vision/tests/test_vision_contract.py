@@ -102,6 +102,30 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(jump.status, VisionStatus.TEMPORAL_REJECT)
         self.assertIsNone(jump.x_mm)
 
+    def test_lost_target_can_reacquire_at_a_new_position(self):
+        subject = tracker()
+        subject.process(0, candidate(500))
+        subject.process(20, candidate(500))
+        self.assertEqual(subject.process(40, candidate(500)).status, VisionStatus.VALID)
+        subject.process(60, None)
+        subject.process(80, None)
+        self.assertEqual(subject.process(100, None).status, VisionStatus.LOST)
+
+        # The ball may reappear well away from the last valid coordinate.  It
+        # still needs three gated frames, but must not be trapped behind the
+        # stale pre-loss temporal gate.
+        self.assertEqual(
+            subject.process(120, candidate(900)).status,
+            VisionStatus.TEMPORAL_REJECT,
+        )
+        self.assertEqual(
+            subject.process(140, candidate(900)).status,
+            VisionStatus.TEMPORAL_REJECT,
+        )
+        reacquired = subject.process(160, candidate(900))
+        self.assertEqual(reacquired.status, VisionStatus.VALID)
+        self.assertEqual(reacquired.x_mm, 100)
+
     def test_sequence_wraps_u32(self):
         subject = tracker()
         subject.seq = 0xFFFFFFFF

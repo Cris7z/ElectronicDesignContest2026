@@ -246,6 +246,7 @@ def main():
         print("VISION_FAULT", repr(error))
         raise
     finally:
+        rct6_uart.close()
         if log_handle is not None:
             log_handle.close()
         try:

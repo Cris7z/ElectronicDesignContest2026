@@ -31,7 +31,8 @@ class SensorRtspServer:
     """One direct camera-to-H.264 RTSP session, with deterministic teardown."""
 
     def __init__(self, session_name="ball", port=8554, width=1280, height=720,
-                 bitrate_kbps=2048, gop_len=30, sensor_id=0):
+                 bitrate_kbps=2048, gop_len=30, sensor_id=0,
+                 src_frame_rate=60, dst_frame_rate=60):
         if bitrate_kbps < 100 or bitrate_kbps > 20000:
             raise ValueError("bitrate_kbps must be 100..20000")
         self.session_name = session_name
@@ -40,12 +41,17 @@ class SensorRtspServer:
         self.height = int(height)
         self.bitrate_kbps = int(bitrate_kbps)
         self.gop_len = int(gop_len)
+        self.src_frame_rate = int(src_frame_rate)
+        self.dst_frame_rate = int(dst_frame_rate)
         self.sensor_id = int(sensor_id)
         self.server = mm.rtsp_server()
         self.running = False
         self.thread_done = True
         self.sensor = None
         self.encoder = None
+        # The 01Studio v1.8 image exposes the encoder through the legacy
+        # explicit-channel API (rather than ``Encoder.chn``).
+        self.encoder_chn = 0
         self.link = None
         self.frame_count = 0
         self.byte_count = 0
@@ -61,7 +67,7 @@ class SensorRtspServer:
                 raise RuntimeError("RTSP session creation failed")
             self._init_camera_encoder_link()
             self.server.rtspserver_start()
-            self.encoder.Start()
+            self.encoder.Start(self.encoder_chn)
             self.sensor.run()
         except BaseException:
             self._teardown_media()
@@ -72,12 +78,16 @@ class SensorRtspServer:
         _thread.start_new_thread(self._stream_loop, ())
 
     def _init_camera_encoder_link(self):
-        self.sensor = Sensor(id=self.sensor_id)
+        # CanMV v1.8's public ``rtsp_server.py`` constructs the active
+        # camera with ``Sensor()``.  The 01Studio 1G image rejects the
+        # otherwise plausible ``id=0`` keyword even though GC2093 is the
+        # discovered physical sensor.
+        self.sensor = Sensor()
         self.sensor.reset()
         self.sensor.set_framesize(width=self.width, height=self.height, alignment=12)
         self.sensor.set_pixformat(Sensor.YUV420SP)
         self.encoder = Encoder()
-        self.encoder.SetOutBufs(8, self.width, self.height)
+        self.encoder.SetOutBufs(self.encoder_chn, 8, self.width, self.height)
         attributes = ChnAttrStr(
             self.encoder.PAYLOAD_TYPE_H264,
             self.encoder.H264_PROFILE_MAIN,
@@ -85,11 +95,13 @@ class SensorRtspServer:
             self.height,
             bit_rate=self.bitrate_kbps,
             gopLen=self.gop_len,
+            src_frame_rate=self.src_frame_rate,
+            dst_frame_rate=self.dst_frame_rate,
         )
-        self.encoder.Create(attributes)
+        self.encoder.Create(self.encoder_chn, attributes)
         self.link = MediaManager.link(
             self.sensor.bind_info()["src"],
-            (VIDEO_ENCODE_MOD_ID, VENC_DEV_ID, self.encoder.chn),
+            (VIDEO_ENCODE_MOD_ID, VENC_DEV_ID, self.encoder_chn),
         )
 
     def _stream_loop(self):
@@ -97,7 +109,7 @@ class SensorRtspServer:
         try:
             while self.running:
                 os.exitpoint()
-                if self.encoder.GetStream(stream) != 0:
+                if self.encoder.GetStream(self.encoder_chn, stream) != 0:
                     continue
                 try:
                     for index in range(stream.pack_cnt):
@@ -109,7 +121,7 @@ class SensorRtspServer:
                         self.byte_count += size
                     self.frame_count += 1
                 finally:
-                    self.encoder.ReleaseStream(stream)
+                    self.encoder.ReleaseStream(self.encoder_chn, stream)
         except BaseException as error:
             print("RTSP_STREAM_ERROR", repr(error))
         finally:
@@ -147,8 +159,8 @@ class SensorRtspServer:
                 pass
         if self.encoder is not None:
             try:
-                self.encoder.Stop()
-                self.encoder.Destroy()
+                self.encoder.Stop(self.encoder_chn)
+                self.encoder.Destroy(self.encoder_chn)
             except BaseException:
                 pass
         self.sensor = None

@@ -59,6 +59,8 @@ def main():
         bitrate_kbps=config["rtsp_bitrate_kbps"],
         gop_len=config.get("rtsp_gop", 30),
         sensor_id=config["sensor_id"],
+        src_frame_rate=config.get("rtsp_src_fps", 60),
+        dst_frame_rate=config.get("rtsp_dst_fps", 60),
     )
     try:
         server.start()

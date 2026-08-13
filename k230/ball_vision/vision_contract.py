@@ -207,7 +207,12 @@ class MeasurementTracker:
             return self._invalid(capture_ms, VisionStatus.OUT_OF_RANGE)
 
         temporal_ratio = 1.0
-        if self.last_valid_x_mm is not None and self.last_valid_ms is not None:
+        # A LOST result deliberately invalidates the old measurement.  Do not
+        # keep using that stale location to reject a genuinely reappearing ball
+        # at another point on the rod; the three-frame reacquire gate below is
+        # the safety mechanism in this mode.
+        if (not self.is_lost and self.last_valid_x_mm is not None
+                and self.last_valid_ms is not None):
             dt_ms = max(1, int(capture_ms) - self.last_valid_ms)
             gate_mm = self.max_speed_mm_s * dt_ms / 1000.0 + self.temporal_margin_mm
             delta_mm = abs(x_mm - self.last_valid_x_mm)
