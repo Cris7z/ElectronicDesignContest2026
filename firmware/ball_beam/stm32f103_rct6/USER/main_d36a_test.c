@@ -24,6 +24,7 @@ extern volatile u16 K230_RAW_RX_COUNT;
  * packet makes the motor turn at low speed for exactly one second, once.
  * Set it back to 0 after the link test to run the +5cm -> -5cm task. */
 #define UART_LINK_TEST            0
+#define D36A_BOOT_SELF_TEST       0
 
 /* Calibration signs.  Keep both at 1 initially.  If the motor encoder count
  * moves opposite to a commanded CW motor move, change ENCODER_CW_SIGN.  If
@@ -441,7 +442,7 @@ static void BallController_Step(void)
         s_link_test_started = 1U;
         s_link_test_start_ms = now_ms;
         D36A_Motor1_SetDirection(1U);
-        D36A_Motor1_SetRpm(8U, MOTOR_MICROSTEP);
+        D36A_Motor1_SetRpm(18U, MOTOR_MICROSTEP);
         printf("K230 UART OK: motor link test started\r\n");
     }
     if(s_link_test_started != 0U && (now_ms - s_link_test_start_ms) >= 1000U)
@@ -503,6 +504,14 @@ int main(void)
     D36A_Motor1_Stop();
     MS42_Encoder_Init();
     ControlTick_Init();
+
+#if D36A_BOOT_SELF_TEST
+    /* Independent actuator-path check: deliberately ignores UART and vision. */
+    D36A_Motor1_SetDirection(1U);
+    D36A_Motor1_SetRpm(18U, MOTOR_MICROSTEP);
+    delay_ms(1000U);
+    D36A_Motor1_Stop();
+#endif
 
     s_state = TASK_WAIT_FOR_VISION;
     printf("Ball control ready: wait K230 UART1 on PA3/USART2\r\n");

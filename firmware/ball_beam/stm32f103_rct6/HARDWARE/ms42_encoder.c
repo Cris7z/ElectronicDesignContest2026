@@ -5,9 +5,14 @@
  * PA0 = A (TIM2_CH1), PA1 = B (TIM2_CH2), PA6 = PWM (TIM3_CH1), PA12 = Z.
  */
 static volatile s32 s_count;
+static volatile s32 s_zero_count;
 static volatile u16 s_last_timer_count;
+static volatile s16 s_last_delta;
+static volatile u16 s_sample_period_ms;
 static volatile s32 s_speed_rpm_x100;
 static volatile u32 s_z_count;
+static volatile u32 s_last_z_ms;
+static volatile u32 s_now_ms;
 
 static volatile u16 s_pwm_last_rise;
 static volatile u16 s_pwm_period;
@@ -15,6 +20,7 @@ static volatile u16 s_pwm_high;
 static volatile u8 s_pwm_wait_fall;
 static volatile u8 s_pwm_have_rise;
 static volatile u8 s_pwm_valid;
+static volatile u32 s_pwm_last_edge_ms;
 
 void MS42_Encoder_Init(void)
 {
@@ -84,29 +90,56 @@ void MS42_Encoder_Init(void)
     NVIC_EnableIRQ(EXTI15_10_IRQn);
 
     s_count = 0;
+    s_zero_count = 0;
     s_last_timer_count = 0;
+    s_last_delta = 0;
+    s_sample_period_ms = 0;
     s_speed_rpm_x100 = 0;
     s_z_count = 0;
+    s_last_z_ms = 0;
+    s_now_ms = 0;
     s_pwm_last_rise = 0;
     s_pwm_period = 0;
     s_pwm_high = 0;
     s_pwm_wait_fall = 0;
     s_pwm_have_rise = 0;
     s_pwm_valid = 0;
+    s_pwm_last_edge_ms = 0;
 }
-
-void MS42_Encoder_Update100ms(void)
+void MS42_Encoder_Service(u32 now_ms)
 {
     u16 now;
     s16 delta;
+    u32 period_ms;
+
+    period_ms = now_ms - s_now_ms;
+    s_now_ms = now_ms;
+    s_sample_period_ms = (period_ms > 65535UL) ? 65535U : (u16)period_ms;
 
     now = (u16)TIM_GetCounter(TIM2);
     delta = (s16)(now - s_last_timer_count);
     s_last_timer_count = now;
     s_count += (s32)delta;
+    s_last_delta = delta;
 
-    /* 100 ms sample: RPM x 100 = delta x 600000 / counts-per-revolution. */
-    s_speed_rpm_x100 = ((s32)delta * 600000L) / MS42_ENCODER_COUNTS_PER_REV;
+    /* RPM x 100 = delta * 6000000 / (counts/rev * milliseconds). */
+    if(period_ms != 0U)
+        s_speed_rpm_x100 = ((s32)delta * 6000000L)
+                         / (MS42_ENCODER_COUNTS_PER_REV * (s32)period_ms);
+
+    if(s_pwm_valid != 0U && (now_ms - s_pwm_last_edge_ms) > MS42_ENCODER_PWM_TIMEOUT_MS)
+        s_pwm_valid = 0U;
+}
+void MS42_Encoder_SetZero(void)
+{
+    s_zero_count = s_count;
+}
+
+void MS42_Encoder_Update100ms(void)
+{
+    static u32 compatibility_ms;
+    compatibility_ms += 100U;
+    MS42_Encoder_Service(compatibility_ms);
 }
 
 void MS42_Encoder_GetData(MS42_EncoderData_t *data)
@@ -115,11 +148,17 @@ void MS42_Encoder_GetData(MS42_EncoderData_t *data)
 
     if(data == 0) return;
 
-    data->count = s_count;
+    data->raw_count = s_count;
+    data->count = s_count - s_zero_count;
+    data->delta_count = s_last_delta;
+    data->sample_period_ms = s_sample_period_ms;
     data->speed_rpm_x100 = s_speed_rpm_x100;
-    data->angle_x10 = (s32)((s_count * 3600L) / MS42_ENCODER_COUNTS_PER_REV);
+    data->angle_x10 = (s32)((data->count * 3600L) / MS42_ENCODER_COUNTS_PER_REV);
     data->z_count = s_z_count;
+    data->last_z_ms = s_last_z_ms;
     data->pwm_valid = s_pwm_valid;
+    data->pwm_period_us = s_pwm_period;
+    data->pwm_high_us = s_pwm_high;
 
     if(s_pwm_valid != 0U && s_pwm_period > s_pwm_high)
     {
@@ -147,6 +186,7 @@ void TIM3_IRQHandler(void)
             if(s_pwm_have_rise != 0U)
                 s_pwm_period = (u16)(capture - s_pwm_last_rise);
             s_pwm_last_rise = capture;
+            s_pwm_last_edge_ms = s_now_ms;
             s_pwm_have_rise = 1U;
             s_pwm_wait_fall = 1U;
             TIM_CCxCmd(TIM3, TIM_Channel_1, TIM_CCx_Disable);
@@ -156,6 +196,7 @@ void TIM3_IRQHandler(void)
         else
         {
             s_pwm_high = (u16)(capture - s_pwm_last_rise);
+            s_pwm_last_edge_ms = s_now_ms;
             s_pwm_wait_fall = 0U;
             TIM_CCxCmd(TIM3, TIM_Channel_1, TIM_CCx_Disable);
             TIM3->CCER &= ~TIM_CCER_CC1P;
@@ -172,6 +213,7 @@ void EXTI15_10_IRQHandler(void)
     if(EXTI_GetITStatus(EXTI_Line12) != RESET)
     {
         s_z_count++;
+        s_last_z_ms = s_now_ms;
         EXTI_ClearITPendingBit(EXTI_Line12);
     }
 }

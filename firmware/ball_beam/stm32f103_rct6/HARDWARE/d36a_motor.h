@@ -11,6 +11,7 @@ void D36A_Motor_Init(void);
 void D36A_StepperTimer_Init(void);
 void D36A_Motor1_Enable(u8 enable);
 void D36A_Motor1_SetDirection(u8 clockwise);
+void D36A_Motor1_SetRpmX100(u16 rpm_x100, u8 microstep);
 void D36A_Motor1_SetRpm(u16 rpm, u8 microstep);
 void D36A_Motor1_Stop(void);
 

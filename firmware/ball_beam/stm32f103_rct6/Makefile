@@ -15,7 +15,7 @@ LDFLAGS := -mcpu=cortex-m3 -mthumb -mfloat-abi=soft -specs=nano.specs \
   -Wl,--gc-sections -Wl,-Tstm32f103rct6.ld -Wl,-Map,$(TARGET).map
 
 SOURCES := \
-  USER/main_d36a_test.c USER/system_stm32f10x.c USER/stm32f10x_it.c \
+  USER/main_ball_beam_k230_control.c USER/system_stm32f10x.c USER/stm32f10x_it.c \
   SYSTEM/delay/delay.c SYSTEM/sys/sys_gcc.c SYSTEM/sys/syscalls_gcc.c SYSTEM/usart/usart_k230.c \
   HARDWARE/d36a_motor.c HARDWARE/ms42_encoder.c HARDWARE/adc.c \
   STM32F10x_FWLib/src/misc.c STM32F10x_FWLib/src/stm32f10x_adc.c \

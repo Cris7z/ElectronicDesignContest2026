@@ -30,6 +30,43 @@ SECTIONS
     _etext = .;
   } >FLASH
 
+  /* nano libc's __libc_init_array() calls _init() before main().  With
+   * --gc-sections, the matching crtn return sequence is discarded unless the
+   * complete init/fini input sections are explicitly retained.  Retaining
+   * these sections also provides valid empty constructor-array boundaries. */
+  .init :
+  {
+    KEEP(*(.init))
+  } >FLASH
+
+  .fini :
+  {
+    KEEP(*(.fini))
+  } >FLASH
+
+  .preinit_array :
+  {
+    PROVIDE_HIDDEN(__preinit_array_start = .);
+    KEEP(*(.preinit_array*))
+    PROVIDE_HIDDEN(__preinit_array_end = .);
+  } >FLASH
+
+  .init_array :
+  {
+    PROVIDE_HIDDEN(__init_array_start = .);
+    KEEP(*(SORT(.init_array.*)))
+    KEEP(*(.init_array*))
+    PROVIDE_HIDDEN(__init_array_end = .);
+  } >FLASH
+
+  .fini_array :
+  {
+    PROVIDE_HIDDEN(__fini_array_start = .);
+    KEEP(*(SORT(.fini_array.*)))
+    KEEP(*(.fini_array*))
+    PROVIDE_HIDDEN(__fini_array_end = .);
+  } >FLASH
+
   .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >FLASH
   .ARM :
   {
