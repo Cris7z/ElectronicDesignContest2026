@@ -2,6 +2,7 @@
 /tmp/
 /reference/
 /outputs/
+/Build/
 
 # Local source material and machine-specific workspaces
 /CCS_Workspace/
@@ -46,6 +47,8 @@
 **/.vscode/
 **/Debug/
 **/Release/
+**/releases/**/*.elf
+**/releases/**/*.map
 *.VC.db
 *.npa??
 *.rdb
