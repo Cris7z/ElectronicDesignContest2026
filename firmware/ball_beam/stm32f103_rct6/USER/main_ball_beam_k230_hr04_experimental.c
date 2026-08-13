@@ -172,7 +172,6 @@ static float AbsFloat(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
-
 static float ClampFloat(float value, float minimum, float maximum)
 {
     if(value < minimum) return minimum;
@@ -718,4 +717,3 @@ int main(void)
         }
     }
 }
-
