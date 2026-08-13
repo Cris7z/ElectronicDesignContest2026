@@ -21,7 +21,7 @@ mingw32-make test
 cd ..
 .\tools\build_ticlang.ps1 -OutputDirectory .\Build\verify
 
-cd ..\..\ball_beam\stm32f103_rct6
+cd ..\ball_beam\stm32f103_rct6
 mingw32-make
 ```
 
